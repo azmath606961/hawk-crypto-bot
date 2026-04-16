@@ -1,6 +1,8 @@
 # HAWK Crypto Bot
 ### 8-Bar Channel Breakout · Binance Futures · Python · GBP 500 → GBP 100k
 
+> **Brand new repo** — default branch is `master`.
+
 ---
 
 ## Current Version: v5 (HAWK-ACTIVE — High-Leverage Edition)
@@ -22,27 +24,55 @@
 
 ---
 
-## The Critical Leverage Rule
+## No Exchange Account Required
 
-```
-WRONG:  qty = (risk / sl_dist) × leverage   → at 50x: one SL = 75% of equity. Instant blowup.
-RIGHT:  qty = risk / sl_dist                → at ANY leverage: one SL = exactly 1.5% of equity.
+The paper trader and backtester **do not need a Binance account or API key**. They use:
+
+- **Paper trader** — fetches live 1h candles from `api.binance.com/api/v3/klines` (public endpoint). All positions are simulated and persisted in `logs/hawk_paper_state.json`. No real orders are ever placed.
+- **Backtester** — reads local CSV files in `data/`. Fully offline.
+
+---
+
+## Setup
+
+### Prerequisites
+
+- Python 3.10+
+- Git
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/azmath606961/hawk-crypto-bot.git
+cd hawk-crypto-bot
+
+python -m venv .venv
+.\.venv\Scripts\Activate
+
+pip install -r requirements.txt
 ```
 
-Leverage only controls **how much margin you deposit**, not how much you risk. This is the single most important rule in this codebase.
+> If activation is blocked by execution policy, run once:
+> `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+
+### Ubuntu / macOS (bash)
+
+```bash
+git clone https://github.com/azmath606961/hawk-crypto-bot.git
+cd hawk-crypto-bot
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
 
 ---
 
 ## Quick Start (Paper Trading)
 
 ```bash
-git clone https://github.com/azmath606961/nifty50.git
-cd nifty50
-git checkout claude/sweet-roentgen
-cd dev/crypto_bot
-pip install -r requirements.txt
-
-# Paper trade ETH/USDT at 10x (GBP 500 starting capital)
+# Paper trade ETH/USDT at 10x (GBP 500 starting capital — recommended)
 python scripts/hawk_paper_trader.py
 
 # All three assets
@@ -53,9 +83,21 @@ python scripts/hawk_paper_trader.py --capital 1000 --leverage 20
 
 # Single test tick (no waiting)
 python scripts/hawk_paper_trader.py --run-once
+
+# Full 2yr backtest
+python scripts/hawk_backtest.py
 ```
 
-**No API key required.** Fetches live data from Binance public REST endpoints.
+---
+
+## The Critical Leverage Rule
+
+```
+WRONG:  qty = (risk / sl_dist) × leverage   → at 50x: one SL = 75% of equity. Instant blowup.
+RIGHT:  qty = risk / sl_dist                → at ANY leverage: one SL = exactly 1.5% of equity.
+```
+
+Leverage only controls **how much margin you deposit**, not how much you risk. This is the single most important rule in this codebase.
 
 ---
 
@@ -71,45 +113,6 @@ python scripts/hawk_paper_trader.py --run-once
 | Risk per trade | 1.5% of equity (always) | Fixed regardless of leverage |
 | Max concurrent | 3 positions (at 10x+) | 60% margin cap |
 | DD gate | 30% from peak → halt | Preserves capital after losing streaks |
-
----
-
-## Compounding Roadmap (GBP 500 → GBP 100k)
-
-| Scenario | Monthly% | GBP 500→1k | GBP 1k→10k | GBP 10k→100k |
-|----------|----------|------------|------------|--------------|
-| ETH 10x only | +10.3% | 8 months | 2y 7m | 4y 7m |
-| All 3 assets 10x | +30.8% | 3 months | 1 year | 1y 8m |
-
----
-
-## File Structure
-
-```
-dev/crypto_bot/
-├── scripts/
-│   ├── hawk_paper_trader.py    ★ ACTIVE — live paper trading runner
-│   └── hawk_backtest.py        ★ ACTIVE — 2yr backtest engine
-├── config/
-│   └── config.yaml             Bot configuration
-├── backtester/
-│   ├── leveraged_engine.py     Constants (GBP_TO_USDT, fees, funding)
-│   ├── engine.py               Generic backtest engine (trend/DCA/grid)
-│   └── metrics.py              Sharpe, drawdown, profit factor
-├── core/
-│   ├── exchange.py             ccxt exchange wrapper
-│   ├── risk_manager.py         Position sizing + DD gate
-│   └── order_executor.py       Order placement
-├── strategies/
-│   └── hawk_strategy.py        HAWK strategy documentation
-├── data/
-│   ├── BTCUSDT_1h.csv          2yr 1h OHLCV for BTC
-│   ├── ETHUSDT_1h.csv          2yr 1h OHLCV for ETH
-│   └── SOLUSDT_1h.csv          2yr 1h OHLCV for SOL
-├── logs/                       Paper trade state + CSV logs (gitignored)
-├── context.md                  Cross-session AI context
-└── CLAUDE.md                   Claude Code instructions
-```
 
 ---
 
@@ -136,18 +139,40 @@ Every tick prints a live dashboard:
 ============================================================
 ```
 
-Trade log is saved to `logs/hawk_paper_trades.csv`. State persists across restarts via `logs/hawk_paper_state.json`.
+State persists across restarts via `logs/hawk_paper_state.json`. Trade log saved to `logs/hawk_paper_trades.csv`.
 
 ---
 
-## Requirements
+## Compounding Roadmap (GBP 500 → GBP 100k)
+
+| Scenario | Monthly% | GBP 500→1k | GBP 1k→10k | GBP 10k→100k |
+|----------|----------|------------|------------|--------------|
+| ETH 10x only | +10.3% | 8 months | 2y 7m | 4y 7m |
+| All 3 assets 10x | +30.8% | 3 months | 1 year | 1y 8m |
+
+---
+
+## File Structure
 
 ```
-pandas>=2.0
-numpy
-requests
-ccxt
-pyyaml
+hawk-crypto-bot/
+├── scripts/
+│   ├── hawk_paper_trader.py    ★ ACTIVE — live paper trading runner
+│   └── hawk_backtest.py        ★ ACTIVE — 2yr backtest engine
+├── config/
+│   └── config.yaml             Bot configuration
+├── backtester/
+│   ├── leveraged_engine.py     Constants (GBP_TO_USDT, fees, funding) — DO NOT MODIFY
+│   ├── engine.py               Generic backtest engine (trend/DCA/grid)
+│   └── metrics.py              Sharpe, drawdown, profit factor
+├── data/
+│   ├── BTCUSDT_1h.csv          2yr 1h OHLCV for BTC
+│   ├── ETHUSDT_1h.csv          2yr 1h OHLCV for ETH
+│   └── SOLUSDT_1h.csv          2yr 1h OHLCV for SOL
+├── logs/                       Paper trade state + CSV logs (gitignored)
+├── requirements.txt
+├── context.md                  Cross-session AI context
+└── CLAUDE.md                   Claude Code instructions
 ```
 
 ---
