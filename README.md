@@ -7,16 +7,18 @@
 
 **Strategy:** Channel breakout + EMA20/50 trend filter + ADX(14)≥20 trend-strength gate.
 
-**Comprehensive backtest results (25,920 combos, Apr 2024–Apr 2026):**
+**Comprehensive backtest results (25,920 combos, Apr 2024–Apr 2026, Wilder EMA):**
 
 | Asset | TF | Lev | Channel | SL | RR | Filters | Return | Monthly% | WR% | Liqs |
 |-------|----|----|---------|----|----|---------|--------|----------|-----|------|
-| **ETH** | 1h | 10x | 8 | 1.5× | 2.0 | ADX≥20 | +656% | **+8.80%** | 43.4% | 0 |
 | **XRP** | 1h | 10x | 16 | 1.0× | 3.0 | none | +289% | **+5.83%** | 20.0% | 0 |
-| **BTC** | 4h | 10x | 8 | 1.5× | 2.0 | MACD | +87% | **+2.64%** | 47.1% | 0 |
+| **ETH** | 1h | 10x | 8 | 2.0× | 2.0 | RSI | +134% | **+2.56%** | — | 0 |
+| **BTC** | 4h | 10x | 8 | 1.5× | 2.0 | RSI+MACD | +87% | **+2.64%** | 47.1% | 0 |
 | **BNB** | 4h | 10x | 16 | 1.5× | 3.0 | ADX≥25+RSI | +61% | **+2.00%** | 43.9% | 0 |
-| **ADA** | 4h | 10x | 16 | 2.0× | 2.5 | MACD | +47% | **+1.51%** | — | 0 |
+| **ADA** | 4h | 10x | 16 | 2.0× | 2.5 | RSI+MACD | +47% | **+1.51%** | — | 0 |
 | SOL | — | — | — | — | — | — | **REJECTED** — no positive EV in any combo | — |
+
+> Previous ETH figure of +8.80%/mo was an EMA implementation bug (standard vs Wilder). All scripts now use Wilder EMA (alpha=1/p) matching the backtest exactly.
 
 **Combined portfolio (all 5 assets, 10x):** ~14.54%/mo → GBP 100k in ~3 years 3 months
 
@@ -69,22 +71,25 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-`hawk_trader.py` is the single unified runner — **identical HAWK v6 strategy** in both modes. Only order execution differs (simulated vs real).
+`hawk_trader.py` is the single unified runner — **identical HAWK v6 strategy** in paper and live mode.
 
 ```bash
-# Paper mode — no API key needed, ETH/USDT 1h
+# Paper mode — no API key needed
 python scripts/hawk_trader.py --paper
 
 # Paper — full portfolio: ETH 1h + BTC/BNB/ADA 4h
-python scripts/hawk_trader.py --paper --4h-symbols BTC/USDT BNB/USDT ADA/USDT
+python scripts/hawk_trader.py --paper --symbols ETH/USDT XRP/USDT --4h-symbols BTC/USDT BNB/USDT ADA/USDT
 
-# Paper — single test tick (exits immediately)
+# Single test tick (exits immediately)
 python scripts/hawk_trader.py --paper --run-once
 
-# Live on Binance Futures testnet (needs testnet API keys)
+# Dashboard — open http://localhost:5000
+python scripts/hawk_dashboard.py
+
+# Live on Binance Futures testnet
 python scripts/hawk_trader.py --testnet
 
-# Live on real Binance Futures (needs live API keys)
+# Live (real money — set BINANCE_API_KEY + BINANCE_API_SECRET first)
 python scripts/hawk_trader.py
 
 # Backtests

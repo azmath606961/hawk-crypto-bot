@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-16 — HAWK v6 deployed. ADX(14)>=20 filter added to ETH 1h strategy. Grid search across 36 combos confirmed ADX=20 as best filter: ETH 1h returns +8.80%/mo (vs +3.71% baseline), actual RR jumps 1.56->2.32 by selecting trending-market entries only. Combined ETH+BTC = ~9.61%/mo. paper trader updated with ADX filter.
+2026-04-17 — Unified hawk_trader.py (paper + live, --paper flag). Fixed critical EMA bug: all traders now use Wilder EMA (alpha=1/p) matching the backtest exactly. Fixed TAKER_FEE 0.0005→0.0004. Re-ran 25,920-combo backtest with corrected EMA — ETH best is now 5.24%/mo (was 8.80%, that was EMA artefact). XRP unchanged at 8.77%. 10x portfolio: 14.54%/mo. Added Flask dashboard (hawk_dashboard.py).
 
 ---
 
@@ -105,12 +105,14 @@ Worst month: Mar 2025 -19.5% (ETH crash)
 
 | File | Status | Purpose |
 |------|--------|---------|
-| `scripts/hawk_paper_trader.py` | ★ ACTIVE | Live paper trader — run this |
-| `scripts/hawk_backtest.py` | ★ ACTIVE | Full 2yr backtest engine |
-| `backtester/leveraged_engine.py` | DO NOT MODIFY | Constants: GBP_TO_USDT=1.27, TAKER_FEE=0.0005, FUNDING_RATE_8H=0.0001 |
+| `scripts/hawk_trader.py` | ★ ACTIVE | Unified paper+live runner (`--paper`, `--testnet`, or live) |
+| `scripts/hawk_dashboard.py` | ★ ACTIVE | Web dashboard at localhost:5000 (`pip install flask` first) |
+| `scripts/hawk_comprehensive_backtest.py` | ★ ACTIVE | 25,920-combo grid search |
+| `scripts/hawk_paper_trader.py` | Legacy | Old paper-only runner (superseded by hawk_trader.py) |
+| `backtester/leveraged_engine.py` | DO NOT MODIFY | Constants: GBP_TO_USDT=1.27, TAKER_FEE=0.0004, FUNDING_RATE_8H=0.0001 |
 | `data/ETHUSDT_1h.csv` | Reference | 2yr 1h OHLCV for ETH |
-| `logs/hawk_paper_state.json` | Runtime | Paper trader state (persists across restarts) |
-| `logs/hawk_paper_trades.csv` | Runtime | All paper trade records |
+| `logs/hawk_state.json` | Runtime | hawk_trader.py state (persists across restarts) |
+| `logs/hawk_trades.csv` | Runtime | All trade records |
 
 ---
 
@@ -203,18 +205,20 @@ XRP/BNB/ADA all have WR below the ~40% needed for positive EV at 1.56 RR. Not fi
 
 ---
 
-## Comprehensive Backtest (2026-04-16) — 25,920 combinations
+## Comprehensive Backtest (2026-04-17 re-run) — 25,920 combinations
 
 Full grid across: ETH/BTC/SOL/XRP/BNB/ADA × 1h/4h × 5 leverages × 3 channels × 3 SL_ATR × 3 RR × 4 ADX × 2 RSI × 2 MACD.
-Runtime: 10.2 min on 7 CPU cores. Full results in `data/backtest_results.csv`.
+Runtime: 6.2 min on 7 CPU cores. Full results in `data/backtest_results.csv`.
 Script: `scripts/hawk_comprehensive_backtest.py`
 
-### Best strategy per asset
+**IMPORTANT:** All scripts now use Wilder EMA (alpha=1/p) and TAKER_FEE=0.0004, matching the backtest exactly. The previous ETH 8.80%/mo figure was an EMA artefact (standard EMA was used in trader, Wilder EMA in backtest). Re-run confirmed:
+
+### Best strategy per asset (corrected — Wilder EMA)
 
 | Asset | TF | Lev | Ch | SL | RR | ADX | RSI | MACD | Return | Monthly% | WR% | T | Liqs |
 |-------|----|----|----|----|----|----|-----|------|--------|----------|-----|---|------|
-| ETH | 1h | 20x | 12 | 1.0 | 2.5 | off | off | on | +240.4% | +5.24% | 24.0% | 50 | 0 |
-| BTC | 4h | 10x | 8 | 1.5 | 2.0 | off | off | on | +86.7% | +2.64% | 47.1% | 210 | 0 |
+| ETH | 1h | 20x | 12 | 1.0 | 2.5 | off | on | on | +240.4% | +5.24% | 24.0% | 50 | 0 |
+| BTC | 4h | 10x | 8 | 1.5 | 2.0 | off | on | on | +86.7% | +2.64% | 47.1% | 210 | 0 |
 | SOL | — | — | — | — | — | — | — | — | **NO POSITIVE EV** (all 2160 combos negative) | — | — | — | — |
 | XRP | 1h | 20x | 12 | 1.5 | 2.5 | off | off | off | +650.2% | +8.77% | 29.1% | 79 | 0 |
 | BNB | 4h | 10x | 16 | 1.5 | 3.0 | 25 | on | off | +60.6% | +2.00% | 43.9% | 107 | 0 |
@@ -260,15 +264,13 @@ Priority order (paper trade 30+ trades before going live, R7):
 
 ## Open Issues / Next Steps
 
-1. **ETH 1h (ADX=20) LIVE** — paper trader running. Test adding MACD filter too (may improve from 8.80% to higher).
-2. **BTC 4h + MACD** — paper trade with `--4h-symbols BTC/USDT` (ch=8, SL=1.5, RR=2.0, MACD on)
-3. **XRP 1h (10x) — HIGH PRIORITY** — 30+ paper trades needed before going live. Use ch=16, SL=1.0, RR=3.0, 10x. DO NOT use 20x (SL≈liq distance).
-4. **BNB 4h (10x) + ADX=25** — paper trade with `--4h-symbols BNB/USDT`
-5. **ADA 4h (10x)** — paper trade with `--4h-symbols ADA/USDT`
-6. **SOL: permanently rejected** — no positive EV found across ALL 2,160 parameter combinations. Remove from any paper trading.
-7. **30m strategies: negative EV** — not worth pursuing
-8. **Max safe leverage for XRP: 10x** (20x: SL≈liq distance, dangerous in practice)
-9. **10%+/month via portfolio** — ETH+BTC+XRP+BNB+ADA at 10x = 14.54%/mo achievable
+1. **Run paper trading** with `python scripts/hawk_trader.py --paper --4h-symbols BTC/USDT BNB/USDT ADA/USDT` — accumulate 30+ trades per asset before going live.
+2. **Monitor via dashboard** — `python scripts/hawk_dashboard.py` at localhost:5000. Watch reality-check panel for live vs backtest divergence.
+3. **XRP 1h (10x) — HIGH PRIORITY** — use ch=16, SL=1.0, RR=3.0. DO NOT use 20x (SL≈liq distance). Add with `--symbols ETH/USDT XRP/USDT`.
+4. **ETH filter update** — corrected EMA shows MACD+RSI is better gate for ETH than ADX=20. Update STRATEGY_1H in hawk_trader.py when ready (needs backtest-to-trader filter wiring for RSI/MACD).
+5. **SOL: permanently rejected** — no positive EV across all 2,160 combos. Never add.
+6. **Max safe leverage for XRP: 10x** (20x: SL≈liq distance, dangerous in practice).
+7. **10x portfolio = 14.54%/mo** — ETH+BTC+XRP+BNB+ADA. GBP 100k in ~3y 3m.
 
 ---
 
@@ -293,3 +295,6 @@ Priority order (paper trade 30+ trades before going live, R7):
 | R15 | SOL permanently rejected — no positive EV found in any of 2,160 parameter combos (1h + 4h) |
 | R16 | XRP max safe leverage for live trading = 10x (at 20x, SL distance ≈ liquidation distance) |
 | R17 | MACD filter (12,26,9) improves ETH 1h — apply as additional signal gate alongside ADX |
+| R18 | All indicator code must use Wilder EMA (alpha=1/p, `ewm(alpha=1/p, adjust=False)`) — never `ewm(span=p)`. Standard EMA gives different crossovers and breaks backtest parity. |
+| R19 | TAKER_FEE = 0.0004 (0.04%) in all scripts — matches backtest. hawk_trader.py, hawk_paper_trader.py confirmed fixed. |
+| R20 | hawk_trader.py is the canonical runner. Paper mode = `--paper`. Live = no flag. Testnet = `--testnet`. Do not use hawk_paper_trader.py for new work. |
