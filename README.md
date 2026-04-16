@@ -74,28 +74,40 @@ pip install -r requirements.txt
 `hawk_trader.py` is the single unified runner — **identical HAWK v6 strategy** in paper and live mode.
 
 ```bash
-# Paper mode — no API key needed
-python scripts/hawk_trader.py --paper
+# ── Paper trading (no API key needed) ────────────────────────────────────────
 
-# Paper — full portfolio: ETH 1h + BTC/BNB/ADA 4h
-python scripts/hawk_trader.py --paper --symbols ETH/USDT XRP/USDT --4h-symbols BTC/USDT BNB/USDT ADA/USDT
+# Conservative portfolio — all 10x, +14.54%/mo (Terminal 1)
+python scripts/hawk_trader.py --paper --portfolio conservative
 
-# Single test tick (exits immediately)
-python scripts/hawk_trader.py --paper --run-once
+# Optimal portfolio — mixed leverage, +20.44%/mo (Terminal 2)
+python scripts/hawk_trader.py --paper --portfolio optimal
 
-# Dashboard — open http://localhost:5000
-python scripts/hawk_dashboard.py
+# Single test tick — verify it runs before leaving it overnight
+python scripts/hawk_trader.py --paper --portfolio conservative --run-once
 
-# Live on Binance Futures testnet
-python scripts/hawk_trader.py --testnet
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+python scripts/hawk_dashboard.py --state logs/hawk_state_conservative.json --port 5000
+python scripts/hawk_dashboard.py --state logs/hawk_state_optimal.json --port 5001
 
-# Live (real money — set BINANCE_API_KEY + BINANCE_API_SECRET first)
-python scripts/hawk_trader.py
+# ── Live trading ──────────────────────────────────────────────────────────────
+python scripts/hawk_trader.py --testnet --portfolio conservative   # testnet first
+python scripts/hawk_trader.py --portfolio conservative             # real money
 
-# Backtests
+# ── Backtests ─────────────────────────────────────────────────────────────────
 python scripts/hawk_comprehensive_backtest.py   # 25,920-combo grid search
 python scripts/hawk_backtest_multi.py           # multi-TF backtest
 ```
+
+## Portfolio Presets
+
+Two presets run all 5 assets with per-symbol params from the 25,920-combo backtest. Each writes to its own state file — run both in parallel to compare performance.
+
+| Portfolio | Assets | Leverage | Monthly% | GBP 500→100k |
+|-----------|--------|----------|----------|--------------|
+| **conservative** | ETH/XRP 1h · BTC/BNB/ADA 4h | all 10x | +14.54% | ~3y 3m |
+| **optimal** | ETH/XRP 1h · BTC/BNB 4h · ADA 4h | 20x/20x/10x/10x/5x | +20.44% | ~2y 4m |
+
+> **Before going live:** Accumulate 30+ paper trades per portfolio with positive EV. Check `logs/hawk_trades_<portfolio>.csv`.
 
 ---
 

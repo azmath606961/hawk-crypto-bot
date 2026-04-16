@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-17 — Unified hawk_trader.py (paper + live, --paper flag). Fixed critical EMA bug: all traders now use Wilder EMA (alpha=1/p) matching the backtest exactly. Fixed TAKER_FEE 0.0005→0.0004. Re-ran 25,920-combo backtest with corrected EMA — ETH best is now 5.24%/mo (was 8.80%, that was EMA artefact). XRP unchanged at 8.77%. 10x portfolio: 14.54%/mo. Added Flask dashboard (hawk_dashboard.py).
+2026-04-17 — Added --portfolio flag with two presets (conservative/optimal). Each runs all 5 assets with per-symbol leverage and strategy params from the backtest, writes to separate state/log files so both can run in parallel terminals. Dashboard supports --state/--port flags to monitor each independently.
 
 ---
 
@@ -262,15 +262,42 @@ Priority order (paper trade 30+ trades before going live, R7):
 
 ---
 
+## Portfolio Presets (hawk_trader.py --portfolio)
+
+| Portfolio | Command | Mo% | 100k ETA | State file |
+|-----------|---------|-----|----------|------------|
+| conservative | `--portfolio conservative` | +14.54% | 3y 3m | `logs/hawk_state_conservative.json` |
+| optimal | `--portfolio optimal` | +20.44% | 2y 4m | `logs/hawk_state_optimal.json` |
+
+### Conservative (all 10x)
+| Symbol | TF | Lev | ch | SL | RR | ADX |
+|--------|----|----|----|----|----|----|
+| ETH/USDT | 1h | 10x | 8 | 2.0 | 2.0 | off |
+| XRP/USDT | 1h | 10x | 16 | 1.0 | 3.0 | off |
+| BTC/USDT | 4h | 10x | 8 | 1.5 | 2.0 | off |
+| BNB/USDT | 4h | 10x | 16 | 1.5 | 3.0 | ≥25 |
+| ADA/USDT | 4h | 10x | 16 | 2.0 | 2.5 | off |
+
+### Optimal (mixed leverage)
+| Symbol | TF | Lev | ch | SL | RR | ADX |
+|--------|----|----|----|----|----|----|
+| ETH/USDT | 1h | 20x | 12 | 1.0 | 2.5 | off |
+| XRP/USDT | 1h | 20x | 12 | 1.5 | 2.5 | off |
+| BTC/USDT | 4h | 10x | 8 | 1.5 | 2.0 | off |
+| BNB/USDT | 4h | 10x | 16 | 1.5 | 3.0 | ≥25 |
+| ADA/USDT | 4h | 5x | 8 | 2.0 | 2.5 | off |
+
+---
+
 ## Open Issues / Next Steps
 
-1. **Run paper trading** with `python scripts/hawk_trader.py --paper --4h-symbols BTC/USDT BNB/USDT ADA/USDT` — accumulate 30+ trades per asset before going live.
-2. **Monitor via dashboard** — `python scripts/hawk_dashboard.py` at localhost:5000. Watch reality-check panel for live vs backtest divergence.
-3. **XRP 1h (10x) — HIGH PRIORITY** — use ch=16, SL=1.0, RR=3.0. DO NOT use 20x (SL≈liq distance). Add with `--symbols ETH/USDT XRP/USDT`.
-4. **ETH filter update** — corrected EMA shows MACD+RSI is better gate for ETH than ADX=20. Update STRATEGY_1H in hawk_trader.py when ready (needs backtest-to-trader filter wiring for RSI/MACD).
-5. **SOL: permanently rejected** — no positive EV across all 2,160 combos. Never add.
-6. **Max safe leverage for XRP: 10x** (20x: SL≈liq distance, dangerous in practice).
-7. **10x portfolio = 14.54%/mo** — ETH+BTC+XRP+BNB+ADA. GBP 100k in ~3y 3m.
+1. **Paper trade both portfolios in parallel** — run conservative + optimal simultaneously, compare performance after 30+ trades.
+2. **Monitor via dashboard** — separate ports for each:
+   - `python scripts/hawk_dashboard.py --state logs/hawk_state_conservative.json --port 5000`
+   - `python scripts/hawk_dashboard.py --state logs/hawk_state_optimal.json --port 5001`
+3. **ETH MACD+RSI filter** — corrected backtest shows MACD+RSI beats ADX=20 for ETH. Not yet wired into hawk_trader.py signal logic (compute_signals only supports ADX gate). Future work.
+4. **SOL: permanently rejected** — no positive EV across all 2,160 combos. Never add.
+5. **XRP max safe leverage: 10x** — at 20x SL≈liq distance. Optimal portfolio uses 20x (per backtest best) but monitor liquidations closely.
 
 ---
 
