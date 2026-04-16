@@ -45,7 +45,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 # ─────────────────────────────────────────────────────────────────────────── #
 
 GBP_TO_USDT    = 1.27
-TAKER_FEE      = 0.0005     # 0.05% futures taker fee
+TAKER_FEE      = 0.0004     # 0.04% futures taker fee (matches backtest)
 FUNDING_8H     = 0.0001     # 0.01% per 8h
 
 # Confirmed optimal params from backtest (Apr 2024 – Apr 2026)
@@ -131,7 +131,8 @@ def fetch_current_price(symbol: str) -> float:
 # ─────────────────────────────────────────────────────────────────────────── #
 
 def _ema(s: pd.Series, p: int) -> pd.Series:
-    return s.ewm(span=p, adjust=False).mean()
+    # Wilder EMA (alpha=1/p) — matches hawk_comprehensive_backtest.py exactly
+    return s.ewm(alpha=1 / p, adjust=False).mean()
 
 def _atr(h: pd.Series, l: pd.Series, c: pd.Series, p: int = 14) -> pd.Series:
     tr = pd.concat([
