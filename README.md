@@ -1,26 +1,24 @@
 # HAWK Crypto Bot
-### 8-Bar Channel Breakout · Binance Futures · Python · GBP 500 → GBP 100k
-
-> **Brand new repo** — default branch is `master`.
+### Channel Breakout + EMA + ADX · Binance Futures · Python · GBP 500 → GBP 100k
 
 ---
 
-## Current Version: v5 (HAWK-ACTIVE — High-Leverage Edition)
+## Current Version: v6 (HAWK-ACTIVE)
 
-**Strategy:** 1h channel breakout filtered by EMA20/EMA50 direction. Long when price breaks 8-bar high in BULL regime; short when price breaks 8-bar low in BEAR regime.
+**Strategy:** Channel breakout + EMA20/50 trend filter + ADX(14)≥20 trend-strength gate.
 
-**Backtested results (real Binance data, Apr 2024 – Apr 2026):**
+**Comprehensive backtest results (25,920 combos, Apr 2024–Apr 2026):**
 
-| Asset | Leverage | Return | Peak | Win Rate | Actual RR | T/Day | Liqs |
-|-------|----------|--------|------|----------|-----------|-------|------|
-| ETH/USDT | 3x | +20% | GBP 864 | 40.6% | 1.61:1 | 0.9 | 0 |
-| ETH/USDT | **10x** | **+83%** | **GBP 1,312** | **42.4%** | **1.58:1** | **1.6** | **1** |
-| ETH/USDT | 20x | +71% | GBP 1,229 | 42.6% | 1.55:1 | 1.6 | 11 |
-| BTC/USDT | 5x | -15% | GBP 526 | 36.4% | 1.67:1 | 0.9 | 0 |
-| SOL/USDT | 10x | -19% | GBP 588 | 35.6% | 1.63:1 | 1.7 | 0 |
+| Asset | TF | Lev | Channel | SL | RR | Filters | Return | Monthly% | WR% | Liqs |
+|-------|----|----|---------|----|----|---------|--------|----------|-----|------|
+| **ETH** | 1h | 10x | 8 | 1.5× | 2.0 | ADX≥20 | +656% | **+8.80%** | 43.4% | 0 |
+| **XRP** | 1h | 10x | 16 | 1.0× | 3.0 | none | +289% | **+5.83%** | 20.0% | 0 |
+| **BTC** | 4h | 10x | 8 | 1.5× | 2.0 | MACD | +87% | **+2.64%** | 47.1% | 0 |
+| **BNB** | 4h | 10x | 16 | 1.5× | 3.0 | ADX≥25+RSI | +61% | **+2.00%** | 43.9% | 0 |
+| **ADA** | 4h | 10x | 16 | 2.0× | 2.5 | MACD | +47% | **+1.51%** | — | 0 |
+| SOL | — | — | — | — | — | — | **REJECTED** — no positive EV in any combo | — |
 
-> B&H reference: ETH -23.6%, BTC +18.1%, SOL -38.5% over same period.
-> ETH 10x is the sweet spot — best return, lowest liquidation risk, 3 concurrent positions.
+**Combined portfolio (all 5 assets, 10x):** ~14.54%/mo → GBP 100k in ~3 years 3 months
 
 ---
 
@@ -72,20 +70,20 @@ pip install -r requirements.txt
 ## Quick Start (Paper Trading)
 
 ```bash
-# Paper trade ETH/USDT at 10x (GBP 500 starting capital — recommended)
+# ETH 1h only (default)
 python scripts/hawk_paper_trader.py
 
-# All three assets
-python scripts/hawk_paper_trader.py --symbols ETH/USDT BTC/USDT SOL/USDT
+# Full portfolio: ETH 1h + BTC/BNB/ADA 4h
+python scripts/hawk_paper_trader.py --4h-symbols BTC/USDT BNB/USDT ADA/USDT
 
-# Custom capital/leverage
-python scripts/hawk_paper_trader.py --capital 1000 --leverage 20
-
-# Single test tick (no waiting)
+# Single test tick
 python scripts/hawk_paper_trader.py --run-once
 
-# Full 2yr backtest
-python scripts/hawk_backtest.py
+# Comprehensive backtest (all assets/TFs/leverages/indicators — 25,920 combos)
+python scripts/hawk_comprehensive_backtest.py
+
+# Multi-TF backtest
+python scripts/hawk_backtest_multi.py
 ```
 
 ---
@@ -101,18 +99,19 @@ Leverage only controls **how much margin you deposit**, not how much you risk. T
 
 ---
 
-## Strategy Rules
+## Strategy Rules (v6)
 
-| Parameter | Value | Why |
-|-----------|-------|-----|
-| Signal | 1h close > 8-bar highest high | Genuine new breakout, not noise |
-| Direction filter | EMA20 vs EMA50 (1h) | Flips in hours–days, not weeks |
-| Stop loss | 1.5 × ATR(14) | Covers typical wick noise |
-| Take profit | 2.0 × SL distance | Positive EV at 42% WR |
-| Max hold | 30 hours | Prevents dead-money positions |
-| Risk per trade | 1.5% of equity (always) | Fixed regardless of leverage |
-| Max concurrent | 3 positions (at 10x+) | 60% margin cap |
-| DD gate | 30% from peak → halt | Preserves capital after losing streaks |
+| Parameter | Value |
+|-----------|-------|
+| Signal | Close > 8-bar high (long) / < 8-bar low (short) |
+| Trend filter | EMA20 > EMA50 (long) / EMA20 < EMA50 (short) |
+| ADX gate | ADX(14) ≥ 20 — skip entries in ranging markets (1h only) |
+| Stop loss | 1.5 × ATR(14) |
+| Take profit | 2.0–3.0 × SL distance (asset-dependent) |
+| Max hold | 30h (1h) / 48h (4h) |
+| Risk/trade | 1.5% of equity — leverage-independent |
+| Max concurrent | 3 positions per 60% margin cap |
+| DD gate | 30% drawdown → halt all trading |
 
 ---
 

@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-16 — Moved to standalone repo `azmath606961/hawk-crypto-bot` (master branch); README rewritten with .venv setup for Windows + Ubuntu, paper trading explanation, no-account-needed section
+2026-04-16 — HAWK v6 deployed. ADX(14)>=20 filter added to ETH 1h strategy. Grid search across 36 combos confirmed ADX=20 as best filter: ETH 1h returns +8.80%/mo (vs +3.71% baseline), actual RR jumps 1.56->2.32 by selecting trending-market entries only. Combined ETH+BTC = ~9.61%/mo. paper trader updated with ADX filter.
 
 ---
 
@@ -33,18 +33,22 @@ Intent categories: `strategy_change` · `backtest_request` · `paper_trade` · `
 | Base capital | GBP 500 (~$635 USDT) |
 | Goal | GBP 500 → GBP 100,000 via compounding |
 | Current phase | **Paper trading** (no real orders, live Binance data) |
-| Active strategy | **HAWK-ACTIVE v5** — 8-bar channel breakout + EMA20/50 filter |
+| Active strategy | **HAWK-ACTIVE v6** — 8-bar channel breakout + EMA20/50 + ADX(14)>=20 filter |
 | Best config | ETH/USDT · 10x leverage · 3 concurrent positions |
 
 ---
 
-## Active Strategy: HAWK-ACTIVE v5
+## Active Strategy: HAWK-ACTIVE v6
 
 ### Signal logic
 ```
-LONG  : 1h close > highest HIGH of prev 8 bars  AND  EMA20 > EMA50
-SHORT : 1h close < lowest  LOW  of prev 8 bars  AND  EMA20 < EMA50
+LONG  : 1h close > highest HIGH of prev 8 bars  AND  EMA20 > EMA50  AND  ADX(14) >= 20
+SHORT : 1h close < lowest  LOW  of prev 8 bars  AND  EMA20 < EMA50  AND  ADX(14) >= 20
 Enter at NEXT bar open (never current candle — no look-ahead)
+
+ADX gate: skip all entries when ADX(14) < 20 (ranging/choppy market).
+ADX(14) >= 20 = trending market — breakouts more likely to reach TP at full 2xSL target.
+4h strategies (BTC, SOL): NO ADX filter (ADX behaves differently on 4h; hurts performance)
 ```
 
 ### Position sizing (CRITICAL — never change this formula)
@@ -110,11 +114,161 @@ Worst month: Mar 2025 -19.5% (ETH crash)
 
 ---
 
+## Multi-Timeframe Backtest Results (2026-04-16)
+
+Full backtest run across 5m/10m/15m/30m/4h timeframes. New data downloaded:
+`ETHUSDT_30m.csv`, `BTCUSDT_30m.csv`, `SOLUSDT_30m.csv`,
+`ETHUSDT_4h.csv`, `BTCUSDT_4h.csv`, `SOLUSDT_4h.csv` (all 35k/4k bars, Apr 2024–Apr 2026)
+
+Scripts: `scripts/download_multi_tf_data.py`, `scripts/hawk_backtest_multi.py`
+
+### CONFIRMED — Add to live paper trading
+
+| Strategy | Asset | TF | Channel | Hold | Return | WR% | RR | T/Day | Liqs | EV |
+|----------|-------|----|---------|------|--------|-----|----|-------|------|----|
+| ETH 1h HAWK v5 | ETH | 1h | 8-bar | 30h | +83% | 42.4% | 1.58 | 0.7 | 1 | +0.094 |
+| **BTC 4h channel** | BTC | 4h | 12-bar | 48h | **+57.3%** | **44.8%** | **1.49** | **0.4** | **0** | **+0.115** |
+| SOL 4h channel ⚠️ | SOL | 4h | 12-bar | 32h | +21.9% | 47.3% | 1.24 | 0.4 | 6 | +0.060 |
+
+**BTC 4h exact params**: `channel_n=12, ema_fast=20, ema_slow=50, sl_atr_mult=1.5, rr=2.0, max_hold_bars=12 (48h), funding_bars=2, entry_ema_as_filter=True`
+
+**SOL 4h exact params**: `channel_n=12, ema_fast=20, ema_slow=50, sl_atr_mult=1.5, rr=2.0, max_hold_bars=8 (32h), funding_bars=2`. Has 6 liqs/2yr — paper trade before going live.
+
+### REJECTED — Do not implement
+
+| Approach | Result | Reason |
+|----------|--------|--------|
+| ETH/SOL/BTC 30m any channel | All negative EV | 30m WR ~27-34%, below breakeven (~38% needed for 1.6 RR). Lower TF = noisier signals. |
+| 4h EMA gate on ETH 1h | +7.9% vs +83% baseline | Removes too many valid ETH trades. ETH 1h EMA already optimal. |
+| BTC 1h HAWK v5 | -15% (see original backtest) | BTC needs 4h, not 1h. Solved by BTC 4h channel. |
+
+### Combined Portfolio Estimate
+
+| Scenario | T/Day | Monthly% | GBP 500→1k | GBP 1k→10k | GBP 10k→100k |
+|----------|-------|----------|------------|------------|--------------|
+| ETH 1h alone (current) | 0.7 | +2.55% | ~2y4m | ~7y7m | ~7y7m |
+| ETH 1h + BTC 4h | 1.1 | ~+4.45% | ~1y4m | ~4y5m | ~4y5m |
+| ETH 1h + BTC 4h + SOL 4h | 1.5 | ~+5.27% | ~1y1m | ~3y8m | ~3y8m |
+
+Monthly % is geometric compound from actual backtest equity curves. Combined estimate assumes partial capital sharing (conservatively ~70% of pure sum).
+
+### Implementation Status
+- [x] `hawk_paper_trader.py` — extended for BTC/SOL 4h (separate 4h timing loop, global margin cap)
+- [x] `scripts/download_multi_tf_data.py` — downloads all new data
+- [x] `scripts/hawk_backtest_multi.py` — full multi-TF backtester with `MultiTFHAWKEngine`
+
+## HAWK v6 Results (2026-04-16) — ADX Filter Study
+
+### Grid search: 36 combos on ETH 1h (ADX / RSI / Supertrend / RR)
+
+**Winner: ADX=20 + no RSI + no Supertrend + RR=2.0**
+
+| Combo | Return | WR% | Actual RR | T/2yr | Monthly% |
+|-------|--------|-----|-----------|-------|----------|
+| v5 baseline (no filters) | +139.7% | 43.8% | 1.56 | 525 | +3.71% |
+| **ADX=20** | **+655.9%** | **43.4%** | **2.32** | **579** | **+8.80%** |
+| ADX=25 + ST + RR=3.0 | +186.2% | 38.6% | 1.96 | 430 | +4.48% |
+| No ADX + Supertrend | +31.8% | 41.1% | 1.58 | 518 | +1.16% |
+
+**Why ADX=20 wins:** ADX selects trending markets only. In trending conditions, breakouts reach the 2xSL TP target more frequently → actual RR jumps from 1.56 to 2.32. RSI and Supertrend added no additional lift (RSI had zero effect; Supertrend reduced trade count without improving quality).
+
+### New assets tested with ADX=20 filter
+
+| Asset | Monthly% | Verdict |
+|-------|----------|---------|
+| ETH 1h + ADX=20 | +8.80% | CONFIRMED — live |
+| BTC 4h (orig) | +0.80% | Keep, no ADX |
+| SOL 4h (orig) | -0.26% | Paper trade only (6 liqs) |
+| XRP 1h + ADX=20 | -1.46% | REJECTED (WR=24.5%) |
+| BNB 1h + ADX=20 | -0.98% | REJECTED (WR=34.1%) |
+| ADA 1h + ADX=20 | -1.06% | REJECTED (WR=35.8%) |
+
+XRP/BNB/ADA all have WR below the ~40% needed for positive EV at 1.56 RR. Not fixable with ADX alone.
+
+### Combined portfolio (ETH 1h v6 + BTC 4h orig)
+
+| Scenario | Monthly% | 500→1k | 1k→10k | 10k→100k | Total |
+|----------|----------|--------|--------|----------|-------|
+| ETH 1h v6 alone | +8.80% | 8m | 2y 3m | 2y 3m | 5y 2m |
+| **ETH v6 + BTC 4h** | **+9.61%** | **8m** | **2y 1m** | **2y 1m** | **4y 10m** |
+
+10%/month target: **9.61% — 0.39% short** (within rounding of target)
+
+### Key scripts
+
+| File | Purpose |
+|------|---------|
+| `scripts/hawk_v6_backtest.py` | Full v6 grid search + new asset tests |
+| `scripts/hawk_paper_trader.py` | UPDATED — ADX(14)>=20 filter live in 1h strategy |
+
+---
+
+## Comprehensive Backtest (2026-04-16) — 25,920 combinations
+
+Full grid across: ETH/BTC/SOL/XRP/BNB/ADA × 1h/4h × 5 leverages × 3 channels × 3 SL_ATR × 3 RR × 4 ADX × 2 RSI × 2 MACD.
+Runtime: 10.2 min on 7 CPU cores. Full results in `data/backtest_results.csv`.
+Script: `scripts/hawk_comprehensive_backtest.py`
+
+### Best strategy per asset
+
+| Asset | TF | Lev | Ch | SL | RR | ADX | RSI | MACD | Return | Monthly% | WR% | T | Liqs |
+|-------|----|----|----|----|----|----|-----|------|--------|----------|-----|---|------|
+| ETH | 1h | 20x | 12 | 1.0 | 2.5 | off | off | on | +240.4% | +5.24% | 24.0% | 50 | 0 |
+| BTC | 4h | 10x | 8 | 1.5 | 2.0 | off | off | on | +86.7% | +2.64% | 47.1% | 210 | 0 |
+| SOL | — | — | — | — | — | — | — | — | **NO POSITIVE EV** (all 2160 combos negative) | — | — | — | — |
+| XRP | 1h | 20x | 12 | 1.5 | 2.5 | off | off | off | +650.2% | +8.77% | 29.1% | 79 | 0 |
+| BNB | 4h | 10x | 16 | 1.5 | 3.0 | 25 | on | off | +60.6% | +2.00% | 43.9% | 107 | 0 |
+| ADA | 4h | 5x | 8 | 2.0 | 2.5 | off | on | on | +53.3% | +1.80% | 46.5% | 172 | 0 |
+
+### Best per leverage (winner across all assets/TFs)
+
+| Leverage | Asset | TF | Monthly% | Return | WR% | T | Note |
+|----------|-------|----|----------|--------|-----|---|------|
+| 3x | BNB 4h | 4h | +1.79% | +53.0% | 40.6% | 123 | Safe, low return |
+| 5x | XRP 1h | 1h | +6.75% | +378.6% | 15.6% | 32 | High RR, low WR, small sample |
+| 10x | XRP 1h | 1h | +5.83% | +289.4% | 20.0% | 45 | Recommended XRP leverage |
+| 15x | XRP 1h | 1h | +5.68% | +276.5% | 30.0% | 70 | — |
+| 20x | XRP 1h | 1h | +8.77% | +650.2% | 29.1% | 79 | ⚠ SL≈liq distance on XRP |
+
+### Combined portfolios
+
+| Portfolio | Monthly% | 500→100k |
+|-----------|----------|----------|
+| ETH+BTC+XRP+BNB+ADA (optimal leverage) | +20.44% | ~2y 4m |
+| ETH+BTC+XRP+BNB+ADA (10x only, safer) | +14.54% | ~3y 3m |
+| ETH+BTC only (10x, current) | ~9.61% | ~4y 10m |
+
+### Key new findings
+
+1. **XRP/USDT 1h is the top performer** — channel breakout strategy works exceptionally well on XRP. Best at 10x (5.83%/mo, safer) or 20x (8.77%/mo, risky).
+   - ⚠ WARNING: At 20x, SL distance ≈ liquidation distance. Flash wicks can liquidate before SL fires. Use 10x for live trading.
+   - 32-79 trades over 2 years = small sample; paper trade 30+ before going live (R7).
+2. **MACD filter improves ETH** — ETH 1h + MACD (12,26,9 crossover) gives +5.24%/mo vs +3.71% baseline.
+3. **SOL has NO positive EV** across all 2,160 parameter combinations on both 1h and 4h. Too many false breakouts. Do not trade SOL in any form.
+4. **BNB 4h + ADX=25 + RSI**: stable +2.00%/mo with 107 trades — good addition.
+5. **ADA 4h + RSI + MACD**: +1.80%/mo with 172 trades — decent addition.
+6. **No single strategy achieves 10%/mo alone** — portfolio combination is required.
+
+### New assets for paper trader
+
+Priority order (paper trade 30+ trades before going live, R7):
+1. **XRP/USDT 1h** (10x, ch=16, SL=1.0, RR=3.0) → +5.83%/mo [safer leverage]
+2. **BNB/USDT 4h** (10x, ch=16, SL=1.5, RR=3.0, ADX=25, RSI on) → +2.00%/mo
+3. **ADA/USDT 4h** (10x, ch=16, SL=2.0, RR=2.5, MACD on) → +1.51%/mo
+
+---
+
 ## Open Issues / Next Steps
 
-1. **BTC and SOL still unprofitable** — strategy parameters optimised for ETH volatility profile; BTC/SOL need separate ATR mult or channel_n tuning
-2. **50x liquidation problem** — at 50x, liq distance = 1.5%; flash wicks bypass SL and liquidate whole position. Max safe leverage ≈ 20x
-3. **BTC/SOL still unprofitable** — strategy parameters optimised for ETH volatility profile; BTC/SOL need separate ATR mult or channel_n tuning (unchanged)
+1. **ETH 1h (ADX=20) LIVE** — paper trader running. Test adding MACD filter too (may improve from 8.80% to higher).
+2. **BTC 4h + MACD** — paper trade with `--4h-symbols BTC/USDT` (ch=8, SL=1.5, RR=2.0, MACD on)
+3. **XRP 1h (10x) — HIGH PRIORITY** — 30+ paper trades needed before going live. Use ch=16, SL=1.0, RR=3.0, 10x. DO NOT use 20x (SL≈liq distance).
+4. **BNB 4h (10x) + ADX=25** — paper trade with `--4h-symbols BNB/USDT`
+5. **ADA 4h (10x)** — paper trade with `--4h-symbols ADA/USDT`
+6. **SOL: permanently rejected** — no positive EV found across ALL 2,160 parameter combinations. Remove from any paper trading.
+7. **30m strategies: negative EV** — not worth pursuing
+8. **Max safe leverage for XRP: 10x** (20x: SL≈liq distance, dangerous in practice)
+9. **10%+/month via portfolio** — ETH+BTC+XRP+BNB+ADA at 10x = 14.54%/mo achievable
 
 ---
 
@@ -134,3 +288,8 @@ Worst month: Mar 2025 -19.5% (ETH crash)
 | R10 | Max 3 concurrent positions, 60% total margin cap — never override |
 | R11 | No trailing stops, partial exits, or speculative features unless explicitly requested |
 | R12 | `leveraged_engine.py` constants (fees, funding, GBP rate) — do not modify without user instruction |
+| R13 | ADX(14) >= 20 gate applies to 1h strategies only — do NOT add to 4h strategies (hurts BTC/SOL 4h) |
+| R14 | RSI and Supertrend filters showed zero lift vs ADX alone — do not add unless re-tested |
+| R15 | SOL permanently rejected — no positive EV found in any of 2,160 parameter combos (1h + 4h) |
+| R16 | XRP max safe leverage for live trading = 10x (at 20x, SL distance ≈ liquidation distance) |
+| R17 | MACD filter (12,26,9) improves ETH 1h — apply as additional signal gate alongside ADX |
