@@ -1,0 +1,108 @@
+# ============================================================
+# Crypto Trading Bot — Master Configuration
+# ============================================================
+# DO NOT commit secrets here. Use environment variables or
+# a secrets file that is in .gitignore.
+# ============================================================
+
+exchange:
+  name: binance              # ccxt exchange id
+  testnet: true              # true = use Binance testnet
+  api_key_env: BINANCE_API_KEY        # env-var name (not the key itself)
+  api_secret_env: BINANCE_API_SECRET
+  timeout_ms: 10000
+  rate_limit: true           # respect ccxt built-in rate limits
+
+trading:
+  base_currency: USDT
+  symbols:                   # symbols to trade
+    - BTC/USDT
+    - ETH/USDT
+  active_strategies:         # which strategies to run per symbol
+    BTC/USDT: [grid, trend]
+    ETH/USDT: [dca]
+  paper_mode: true           # override to live trading with caution
+
+risk:
+  capital_usdt: 1000.0       # total allocated capital
+  risk_per_trade_pct: 1.0    # max 1% of capital per trade
+  max_daily_loss_pct: 3.0    # halt if daily loss > 3%
+  max_drawdown_pct: 10.0     # halt if equity drawdown > 10%
+  max_open_trades: 5         # simultaneous open positions cap
+  fee_rate: 0.001            # 0.1% Binance spot fee (maker/taker avg)
+  slippage_pct: 0.05         # 0.05% estimated slippage
+
+grid_trading:
+  BTC/USDT:
+    lower_price: 58000.0     # grid lower bound
+    upper_price: 72000.0     # grid upper bound
+    num_grids: 14            # number of grid lines
+    order_amount_usdt: 50.0  # per-grid order size
+    dynamic_grid: true       # recalc range based on ATR
+    atr_period: 14           # ATR lookback for dynamic range
+    atr_multiplier: 3.0      # range = midprice ± atr_mult * ATR
+    rebalance_on_exit: true  # rebuild grid when price exits range
+  ETH/USDT:
+    lower_price: 2800.0
+    upper_price: 3600.0
+    num_grids: 16
+    order_amount_usdt: 30.0
+    dynamic_grid: true
+    atr_period: 14
+    atr_multiplier: 3.0
+    rebalance_on_exit: true
+
+trend_following:
+  BTC/USDT:
+    timeframe: 1h
+    ema_fast: 20
+    ema_slow: 50
+    risk_reward_ratio: 2.0   # TP = 2× SL distance
+    sl_atr_multiplier: 1.5   # stop-loss = 1.5× ATR below entry
+    atr_period: 14
+    min_trend_bars: 3        # EMAs must be separated for N bars
+    position_size_pct: 1.0   # % of capital per trend trade
+  ETH/USDT:
+    timeframe: 1h
+    ema_fast: 20
+    ema_slow: 50
+    risk_reward_ratio: 2.0
+    sl_atr_multiplier: 1.5
+    atr_period: 14
+    min_trend_bars: 3
+    position_size_pct: 1.0
+
+dca:
+  ETH/USDT:
+    base_amount_usdt: 20.0   # regular purchase amount
+    frequency: daily         # daily | weekly | hourly
+    dip_buy_enabled: true
+    dip_threshold_pct: 3.0   # buy extra if price drops 3% in 24h
+    dip_multiplier: 2.0      # spend 2× base_amount on dip
+    max_dca_per_day: 3       # prevent runaway buying on big drops
+
+backtester:
+  data_dir: dev/crypto_bot/data
+  default_symbol: BTC/USDT
+  default_timeframe: 1h
+  commission: 0.001          # 0.1%
+  slippage: 0.0005           # 0.05%
+  initial_capital: 1000.0
+
+logging:
+  log_dir: dev/crypto_bot/logs
+  trade_log_csv: trades.csv
+  equity_log_csv: equity.csv
+  level: INFO                # DEBUG | INFO | WARNING | ERROR
+
+alerts:
+  telegram_enabled: false
+  telegram_token_env: TELEGRAM_BOT_TOKEN
+  telegram_chat_id_env: TELEGRAM_CHAT_ID
+  notify_on:
+    - trade_open
+    - trade_close
+    - stop_loss_hit
+    - daily_loss_limit
+    - system_error
+    - grid_rebalance
