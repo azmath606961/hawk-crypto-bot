@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-16 — HAWK v5 complete; paper trader live; README + prompt optimizer added
+2026-04-16 — Moved to standalone repo `azmath606961/hawk-crypto-bot` (master branch); README rewritten with .venv setup for Windows + Ubuntu, paper trading explanation, no-account-needed section
 
 ---
 
@@ -27,7 +27,7 @@ Intent categories: `strategy_change` · `backtest_request` · `paper_trade` · `
 | Field | Value |
 |-------|-------|
 | Project | HAWK Crypto Bot (separate from Nifty50 options bot) |
-| Repo path | `dev/crypto_bot/` inside `azmath606961/nifty50`, branch `claude/sweet-roentgen` |
+| Repo path | `azmath606961/hawk-crypto-bot`, branch `master` (standalone repo) |
 | Exchange | Binance Futures (perpetual swaps) |
 | Instruments | ETH/USDT, BTC/USDT, SOL/USDT |
 | Base capital | GBP 500 (~$635 USDT) |
@@ -114,7 +114,7 @@ Worst month: Mar 2025 -19.5% (ETH crash)
 
 1. **BTC and SOL still unprofitable** — strategy parameters optimised for ETH volatility profile; BTC/SOL need separate ATR mult or channel_n tuning
 2. **50x liquidation problem** — at 50x, liq distance = 1.5%; flash wicks bypass SL and liquidate whole position. Max safe leverage ≈ 20x
-3. **Move to standalone repo** — user wants crypto bot as its own project (separate from nifty50 repo); pending
+3. **BTC/SOL still unprofitable** — strategy parameters optimised for ETH volatility profile; BTC/SOL need separate ATR mult or channel_n tuning (unchanged)
 
 ---
 
