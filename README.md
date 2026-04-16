@@ -88,6 +88,81 @@ python scripts/hawk_backtest_multi.py
 
 ---
 
+## Going Live
+
+> **Prerequisite:** Complete at least 30 paper trades with positive EV before switching to live. Paper trade results are in `logs/hawk_paper_trades.csv`.
+
+> **Note:** Live trading runs via `main.py` (grid/trend/DCA strategies). The HAWK v6 breakout strategy is currently paper-only — live integration is a future step.
+
+### 1. Binance Account Setup
+
+1. Create account at [binance.com](https://binance.com)
+2. Complete KYC verification
+3. Enable **Futures trading** (USD-M Futures)
+4. Go to **API Management** → Create API key
+5. Enable permissions: **Read** + **Futures trading** (do NOT enable withdrawals)
+6. Copy your API Key and Secret
+
+### 2. Set Environment Variables
+
+**Windows (PowerShell):**
+```powershell
+$env:BINANCE_API_KEY    = "your_api_key_here"
+$env:BINANCE_API_SECRET = "your_api_secret_here"
+```
+
+**Linux / macOS:**
+```bash
+export BINANCE_API_KEY="your_api_key_here"
+export BINANCE_API_SECRET="your_api_secret_here"
+```
+
+To persist across sessions, add those lines to your shell profile (`~/.bashrc`, `~/.zshrc`) or Windows user environment variables.
+
+### 3. Test on Binance Testnet First
+
+Edit `config/config.yaml`:
+```yaml
+exchange:
+  testnet: true   # Binance Futures testnet — no real money
+```
+
+Get testnet API keys at [testnet.binancefuture.com](https://testnet.binancefuture.com) (separate keys from live).
+
+```bash
+python main.py
+```
+
+Verify orders appear on the testnet dashboard before going live.
+
+### 4. Switch to Live
+
+Edit `config/config.yaml`:
+```yaml
+exchange:
+  testnet: false        # real exchange
+
+trading:
+  paper_mode: false     # place real orders
+  symbols:
+    - ETH/USDT          # adjust to your preferred assets
+
+risk:
+  capital_usdt: 635.0   # your starting USDT (e.g. GBP 500 converted)
+```
+
+```bash
+python main.py
+```
+
+### 5. Force Paper Mode at Runtime
+
+```bash
+python main.py --paper   # overrides config — safe to test live connectivity
+```
+
+---
+
 ## The Critical Leverage Rule
 
 ```
