@@ -67,41 +67,45 @@ pip install -r requirements.txt
 
 ---
 
-## Quick Start (Paper Trading)
+## Quick Start
+
+`hawk_trader.py` is the single unified runner — **identical HAWK v6 strategy** in both modes. Only order execution differs (simulated vs real).
 
 ```bash
-# ETH 1h only (default)
-python scripts/hawk_paper_trader.py
+# Paper mode — no API key needed, ETH/USDT 1h
+python scripts/hawk_trader.py --paper
 
-# Full portfolio: ETH 1h + BTC/BNB/ADA 4h
-python scripts/hawk_paper_trader.py --4h-symbols BTC/USDT BNB/USDT ADA/USDT
+# Paper — full portfolio: ETH 1h + BTC/BNB/ADA 4h
+python scripts/hawk_trader.py --paper --4h-symbols BTC/USDT BNB/USDT ADA/USDT
 
-# Single test tick
-python scripts/hawk_paper_trader.py --run-once
+# Paper — single test tick (exits immediately)
+python scripts/hawk_trader.py --paper --run-once
 
-# Comprehensive backtest (all assets/TFs/leverages/indicators — 25,920 combos)
-python scripts/hawk_comprehensive_backtest.py
+# Live on Binance Futures testnet (needs testnet API keys)
+python scripts/hawk_trader.py --testnet
 
-# Multi-TF backtest
-python scripts/hawk_backtest_multi.py
+# Live on real Binance Futures (needs live API keys)
+python scripts/hawk_trader.py
+
+# Backtests
+python scripts/hawk_comprehensive_backtest.py   # 25,920-combo grid search
+python scripts/hawk_backtest_multi.py           # multi-TF backtest
 ```
 
 ---
 
 ## Going Live
 
-> **Prerequisite:** Complete at least 30 paper trades with positive EV before switching to live. Paper trade results are in `logs/hawk_paper_trades.csv`.
-
-> **Note:** Live trading runs via `main.py` (grid/trend/DCA strategies). The HAWK v6 breakout strategy is currently paper-only — live integration is a future step.
+The same `hawk_trader.py` script handles live trading — no config changes, no separate codebase. The strategy logic is byte-for-byte identical to paper mode; only the execution layer changes.
 
 ### 1. Binance Account Setup
 
 1. Create account at [binance.com](https://binance.com)
 2. Complete KYC verification
-3. Enable **Futures trading** (USD-M Futures)
+3. Enable **USD-M Futures** trading
 4. Go to **API Management** → Create API key
-5. Enable permissions: **Read** + **Futures trading** (do NOT enable withdrawals)
-6. Copy your API Key and Secret
+5. Enable: **Read** + **Futures trading** (do NOT enable withdrawals)
+6. Save your API Key and Secret
 
 ### 2. Set Environment Variables
 
@@ -117,49 +121,35 @@ export BINANCE_API_KEY="your_api_key_here"
 export BINANCE_API_SECRET="your_api_secret_here"
 ```
 
-To persist across sessions, add those lines to your shell profile (`~/.bashrc`, `~/.zshrc`) or Windows user environment variables.
+To persist, add to `~/.bashrc` / `~/.zshrc` (Linux/macOS) or Windows user environment variables.
 
-### 3. Test on Binance Testnet First
+### 3. Test on Binance Futures Testnet First
 
-Edit `config/config.yaml`:
-```yaml
-exchange:
-  testnet: true   # Binance Futures testnet — no real money
-```
-
-Get testnet API keys at [testnet.binancefuture.com](https://testnet.binancefuture.com) (separate keys from live).
+Get free testnet API keys at [testnet.binancefuture.com](https://testnet.binancefuture.com) (separate from live keys).
 
 ```bash
-python main.py
+# Set your TESTNET keys in env vars, then:
+python scripts/hawk_trader.py --testnet
 ```
 
-Verify orders appear on the testnet dashboard before going live.
+Confirm orders appear on the testnet dashboard before going live.
 
-### 4. Switch to Live
-
-Edit `config/config.yaml`:
-```yaml
-exchange:
-  testnet: false        # real exchange
-
-trading:
-  paper_mode: false     # place real orders
-  symbols:
-    - ETH/USDT          # adjust to your preferred assets
-
-risk:
-  capital_usdt: 635.0   # your starting USDT (e.g. GBP 500 converted)
-```
+### 4. Go Live
 
 ```bash
-python main.py
+# Set your LIVE keys in env vars, then:
+python scripts/hawk_trader.py
+
+# Full portfolio:
+python scripts/hawk_trader.py --4h-symbols BTC/USDT BNB/USDT ADA/USDT
+
+# Custom capital / leverage:
+python scripts/hawk_trader.py --capital 500 --leverage 10 --risk-pct 1.5
 ```
 
-### 5. Force Paper Mode at Runtime
+The bot sets leverage and margin mode automatically on first trade per symbol.
 
-```bash
-python main.py --paper   # overrides config — safe to test live connectivity
-```
+> **Prerequisite:** Run at least 30 paper trades (`--paper`) with positive EV before going live. Check results in `logs/hawk_trades.csv`.
 
 ---
 
@@ -231,8 +221,10 @@ State persists across restarts via `logs/hawk_paper_state.json`. Trade log saved
 ```
 hawk-crypto-bot/
 ├── scripts/
-│   ├── hawk_paper_trader.py    ★ ACTIVE — live paper trading runner
-│   └── hawk_backtest.py        ★ ACTIVE — 2yr backtest engine
+│   ├── hawk_trader.py          ★ ACTIVE — unified paper + live runner (--paper flag)
+│   ├── hawk_comprehensive_backtest.py  ★ ACTIVE — 25,920-combo grid search
+│   ├── hawk_backtest_multi.py  ★ ACTIVE — multi-TF backtest
+│   └── hawk_paper_trader.py    legacy paper-only runner (superseded by hawk_trader.py)
 ├── config/
 │   └── config.yaml             Bot configuration
 ├── backtester/
