@@ -1,6 +1,9 @@
 # Core exchange
 ccxt>=4.3.0
 
+# Dashboard
+flask>=3.0.0
+
 # Data & numerics
 pandas>=2.0.0
 numpy>=1.26.0
