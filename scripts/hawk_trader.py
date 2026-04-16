@@ -75,6 +75,46 @@ STRATEGY_4H = dict(
 )
 
 # ─────────────────────────────────────────────────────────────────────────── #
+#  Portfolio presets — from 25,920-combo backtest (Wilder EMA, Apr 2024-2026) #
+#                                                                              #
+#  conservative: all 10x → +14.54%/mo combined → GBP 100k in ~3y 3m          #
+#  optimal:      mixed leverage → +20.44%/mo combined → GBP 100k in ~2y 4m   #
+# ─────────────────────────────────────────────────────────────────────────── #
+
+def _s1h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=30, bar_secs=3600,  funding_bars=8,  interval="1h", adx_min=None), **kw}
+def _s4h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=12, bar_secs=14400, funding_bars=2,  interval="4h", adx_min=None), **kw}
+
+PORTFOLIOS: dict[str, dict] = {
+    # ── Conservative: all 10x ────────────────────────────────────────────
+    "conservative": {
+        "label":      "Conservative — 10x cap — +14.54%/mo — GBP 100k in ~3y 3m",
+        "state_file": "logs/hawk_state_conservative.json",
+        "trade_log":  "logs/hawk_trades_conservative.csv",
+        "symbols": [
+            # symbol       tf    lev  strategy params
+            ("ETH/USDT",  "1h", 10, _s1h(channel_n=8,  sl_atr_mult=2.0, rr=2.0)),
+            ("XRP/USDT",  "1h", 10, _s1h(channel_n=16, sl_atr_mult=1.0, rr=3.0)),
+            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0)),
+            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0)),
+            ("ADA/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=2.0, rr=2.5)),
+        ],
+    },
+    # ── Optimal: mixed leverage ───────────────────────────────────────────
+    "optimal": {
+        "label":      "Optimal — mixed leverage — +20.44%/mo — GBP 100k in ~2y 4m",
+        "state_file": "logs/hawk_state_optimal.json",
+        "trade_log":  "logs/hawk_trades_optimal.csv",
+        "symbols": [
+            ("ETH/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.0, rr=2.5)),
+            ("XRP/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.5, rr=2.5)),
+            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0)),
+            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0)),
+            ("ADA/USDT",  "4h",  5, _s4h(channel_n=8,  sl_atr_mult=2.0, rr=2.5)),
+        ],
+    },
+}
+
+# ─────────────────────────────────────────────────────────────────────────── #
 #  Logging                                                                      #
 # ─────────────────────────────────────────────────────────────────────────── #
 
@@ -752,13 +792,28 @@ def process_tick_4h(state, symbol, leverage, risk_pct, rr, sl_atr_mult,
                   csv_path=csv_path, cfg=STRATEGY_4H, executor=executor)
 
 
+def process_sym(state, sym_cfg: tuple, risk_pct: float,
+                max_margin_pct: float, csv_path: str,
+                executor=None, force_4h: bool = False) -> None:
+    """Run one tick for a single portfolio symbol config tuple."""
+    symbol, tf, leverage, cfg = sym_cfg
+    if tf == "4h" and not (force_4h or is_4h_boundary()):
+        return
+    max_pos = calc_max_pos(leverage, risk_pct, cfg["sl_atr_mult"], max_margin_pct)
+    _process_tick(
+        state=state, symbol=symbol, tf=tf, leverage=leverage,
+        risk_pct=risk_pct, rr=cfg["rr"], sl_atr_mult=cfg["sl_atr_mult"],
+        max_hold_bars=cfg["max_hold_bars"], cooldown_bars=1,
+        max_margin_pct=max_margin_pct, max_pos=max_pos,
+        csv_path=csv_path, cfg=cfg, executor=executor,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────── #
 #  Dashboard                                                                    #
 # ─────────────────────────────────────────────────────────────────────────── #
 
-def print_dashboard(state: dict, symbols_1h: list[str],
-                    symbols_4h: list[str], leverage: int,
-                    mode: str = "PAPER") -> None:
+def print_dashboard(state: dict, sym_label: str, mode: str = "PAPER") -> None:
     equity = state["equity"]
     peak   = state["peak_equity"]
     dd_pct = (1 - equity / peak) * 100
@@ -766,11 +821,10 @@ def print_dashboard(state: dict, symbols_1h: list[str],
     wins   = state["wins"]
     wr     = (wins / trades * 100) if trades else 0
     gbp    = equity / GBP_TO_USDT
-    all_syms = list(symbols_1h) + [f"{s} [4h]" for s in symbols_4h]
 
     print("\n" + "=" * 65)
     print(f"  HAWK {mode} TRADER  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"  Leverage: {leverage}x  |  Symbols: {', '.join(all_syms)}")
+    print(f"  {sym_label}")
     print("=" * 65)
     print(f"  Equity        : ${equity:>10.2f}  (GBP {gbp:.2f})")
     print(f"  Peak equity   : ${peak:>10.2f}")
@@ -830,13 +884,15 @@ def main() -> None:
         description="HAWK Trader — Unified Paper & Live (HAWK v6)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  python scripts/hawk_trader.py --paper                  # paper, ETH/USDT 1h
-  python scripts/hawk_trader.py --paper --run-once       # single test tick
-  python scripts/hawk_trader.py --testnet                # live on Binance testnet
-  python scripts/hawk_trader.py                          # live (real money)
-  python scripts/hawk_trader.py --paper --symbols ETH/USDT XRP/USDT
-  python scripts/hawk_trader.py --paper --4h-symbols BTC/USDT BNB/USDT ADA/USDT
+Portfolio presets (recommended — run each in a separate terminal):
+  python scripts/hawk_trader.py --paper --portfolio conservative   # 10x all, +14.54%/mo
+  python scripts/hawk_trader.py --paper --portfolio optimal        # mixed leverage, +20.44%/mo
+
+Manual mode:
+  python scripts/hawk_trader.py --paper --symbols ETH/USDT XRP/USDT --4h-symbols BTC/USDT
+  python scripts/hawk_trader.py --paper --run-once                 # single test tick
+  python scripts/hawk_trader.py --testnet                          # live on testnet
+  python scripts/hawk_trader.py                                    # live (real money)
 
 Live mode env vars (not needed for --paper):
   BINANCE_API_KEY     your Binance API key
@@ -847,19 +903,23 @@ Live mode env vars (not needed for --paper):
                         help="Paper trading mode — no API key required")
     parser.add_argument("--testnet",    action="store_true",
                         help="Live mode on Binance Futures testnet")
+    parser.add_argument("--portfolio",  choices=list(PORTFOLIOS.keys()),
+                        help="Use a portfolio preset (conservative or optimal)")
     parser.add_argument("--symbols",    nargs="+", default=["ETH/USDT"],
-                        help="1h strategy symbols (default: ETH/USDT)")
+                        help="Manual: 1h symbols (ignored when --portfolio is set)")
     parser.add_argument("--4h-symbols", nargs="+", default=[], dest="symbols_4h",
-                        help="4h strategy symbols (e.g. BTC/USDT BNB/USDT ADA/USDT)")
-    parser.add_argument("--leverage",   type=int,   default=10)
+                        help="Manual: 4h symbols (ignored when --portfolio is set)")
+    parser.add_argument("--leverage",   type=int,   default=10,
+                        help="Manual: leverage for all symbols (ignored when --portfolio is set)")
     parser.add_argument("--capital",    type=float, default=500.0,
-                        help="Starting capital in GBP (default: 500, paper mode only)")
-    parser.add_argument("--risk-pct",   type=float, default=1.5,
-                        help="Risk per trade as %% of equity (default: 1.5)")
-    parser.add_argument("--state-file", default="logs/hawk_state.json")
-    parser.add_argument("--trade-log",  default="logs/hawk_trades.csv")
+                        help="Starting capital in GBP (default: 500)")
+    parser.add_argument("--risk-pct",   type=float, default=1.5)
+    parser.add_argument("--state-file", default=None,
+                        help="State file path (default: logs/hawk_state_<portfolio>.json)")
+    parser.add_argument("--trade-log",  default=None,
+                        help="Trade log path (default: logs/hawk_trades_<portfolio>.csv)")
     parser.add_argument("--run-once",   action="store_true",
-                        help="Run one tick for all symbols then exit (for testing)")
+                        help="Run one tick then exit (for testing)")
     args = parser.parse_args()
 
     os.makedirs("logs", exist_ok=True)
@@ -874,64 +934,69 @@ Live mode env vars (not needed for --paper):
             sys.exit(1)
 
     mode       = "PAPER" if executor is None else ("TESTNET" if args.testnet else "LIVE")
-    symbols_1h = args.symbols
-    symbols_4h = args.symbols_4h
-    leverage   = args.leverage
     risk_pct   = args.risk_pct
     max_margin = 0.60
-    max_pos_1h = calc_max_pos(leverage, risk_pct, STRATEGY_1H["sl_atr_mult"], max_margin)
-    max_pos_4h = calc_max_pos(leverage, risk_pct, STRATEGY_4H["sl_atr_mult"], max_margin)
+
+    # ── Portfolio mode vs manual mode ─────────────────────────────────────
+    if args.portfolio:
+        pf         = PORTFOLIOS[args.portfolio]
+        sym_cfgs   = pf["symbols"]      # list of (symbol, tf, leverage, cfg_dict)
+        state_file = args.state_file or pf["state_file"]
+        trade_log  = args.trade_log  or pf["trade_log"]
+        pf_label   = pf["label"]
+    else:
+        # Manual mode — build sym_cfgs from CLI args with a single leverage
+        lev      = args.leverage
+        sym_cfgs = (
+            [(s, "1h", lev, {**STRATEGY_1H}) for s in args.symbols] +
+            [(s, "4h", lev, {**STRATEGY_4H}) for s in args.symbols_4h]
+        )
+        state_file = args.state_file or "logs/hawk_state.json"
+        trade_log  = args.trade_log  or "logs/hawk_trades.csv"
+        all_syms   = args.symbols + [f"{s}[4h]" for s in args.symbols_4h]
+        pf_label   = f"{', '.join(all_syms)} | {lev}x"
 
     initial_usdt = args.capital * GBP_TO_USDT
-    state = load_state(args.state_file, initial_usdt)
+    state = load_state(state_file, initial_usdt)
 
+    # Summary of per-symbol configs
     log.info("=" * 65)
-    log.info("  HAWK TRADER  [%s]  (HAWK v6 — channel breakout + EMA + ADX)", mode)
-    log.info("  1h symbols : %s  (max %d concurrent each)", symbols_1h, max_pos_1h)
-    log.info("  4h symbols : %s  (max %d concurrent each)",
-             symbols_4h or "(none)", max_pos_4h)
-    log.info("  Leverage   : %dx  |  Risk/trade: %.1f%%", leverage, risk_pct)
-    log.info("  Global margin cap: %.0f%%  |  DD halt: 30%%", max_margin * 100)
+    log.info("  HAWK TRADER  [%s]", mode)
+    log.info("  %s", pf_label)
+    for sym, tf, lev, cfg in sym_cfgs:
+        log.info("    %-12s [%s]  %2dx  ch=%-2d  SL=%.1fx  RR=%.1f  ADX=%s",
+                 sym, tf, lev, cfg["channel_n"], cfg["sl_atr_mult"], cfg["rr"],
+                 f">={cfg['adx_min']:.0f}" if cfg.get("adx_min") else "off")
+    log.info("  Risk/trade: %.1f%%  |  Margin cap: %.0f%%  |  DD halt: 30%%",
+             risk_pct, max_margin * 100)
+    log.info("  State: %s", state_file)
     log.info("=" * 65)
 
-    def run_1h():
-        for sym in symbols_1h:
-            process_tick(state, sym, leverage, risk_pct,
-                         STRATEGY_1H["rr"], STRATEGY_1H["sl_atr_mult"],
-                         STRATEGY_1H["max_hold_bars"], 1, max_margin, max_pos_1h,
-                         args.trade_log, executor=executor)
-
-    def run_4h():
-        for sym in symbols_4h:
-            process_tick_4h(state, sym, leverage, risk_pct,
-                            STRATEGY_4H["rr"], STRATEGY_4H["sl_atr_mult"],
-                            STRATEGY_4H["max_hold_bars"], 1, max_margin, max_pos_4h,
-                            args.trade_log, executor=executor)
-
-    def run_and_save(force_4h: bool = False):
-        run_1h()
-        if symbols_4h and (force_4h or is_4h_boundary()):
-            run_4h()
-        print_dashboard(state, symbols_1h, symbols_4h, leverage, mode=mode)
-        save_state(args.state_file, state)
+    def run_all(force_4h: bool = False):
+        for sc in sym_cfgs:
+            process_sym(state, sc, risk_pct, max_margin, trade_log,
+                        executor=executor, force_4h=force_4h)
+        sym_lev_str = " | ".join(f"{s}({l}x)" for s, _, l, _ in sym_cfgs)
+        print_dashboard(state, sym_lev_str, mode=mode)
+        save_state(state_file, state)
 
     if args.run_once:
-        run_and_save(force_4h=True)
+        run_all(force_4h=True)
         return
 
     log.info("Running first tick immediately ...")
-    run_and_save(force_4h=True)
+    run_all(force_4h=True)
 
     while True:
-        wait = seconds_until_next_hour_candle()
+        wait   = seconds_until_next_hour_candle()
         next_ts = datetime.now(timezone.utc).timestamp() + wait
         next_dt = datetime.fromtimestamp(next_ts, tz=timezone.utc)
+        has_4h  = any(tf == "4h" for _, tf, _, _ in sym_cfgs)
         log.info("Next tick in %.0f min  (at %s UTC)%s",
-                 wait / 60,
-                 next_dt.strftime("%H:%M"),
-                 "  [4h tick also due]" if symbols_4h and next_dt.hour % 4 == 0 else "")
+                 wait / 60, next_dt.strftime("%H:%M"),
+                 "  [4h tick also due]" if has_4h and next_dt.hour % 4 == 0 else "")
         time.sleep(wait)
-        run_and_save()
+        run_all()
 
 
 if __name__ == "__main__":
