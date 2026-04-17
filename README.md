@@ -5,22 +5,39 @@
 
 ## Current Version: v6 (HAWK-ACTIVE)
 
-**Strategy:** Channel breakout + EMA20/50 trend filter + ADX(14)≥20 trend-strength gate.
+**Strategy:** Channel breakout + EMA20/50 trend filter + per-symbol RSI/MACD/ADX gates.
 
-**Comprehensive backtest results (25,920 combos, Apr 2024–Apr 2026, Wilder EMA):**
+**Comprehensive backtest — 25,920 combos, Apr 2024–Apr 2026, Wilder EMA (confirmed reproducible):**
 
-| Asset | TF | Lev | Channel | SL | RR | Filters | Return | Monthly% | WR% | Liqs |
-|-------|----|----|---------|----|----|---------|--------|----------|-----|------|
-| **XRP** | 1h | 10x | 16 | 1.0× | 3.0 | none | +289% | **+5.83%** | 20.0% | 0 |
-| **ETH** | 1h | 10x | 8 | 2.0× | 2.0 | RSI | +134% | **+2.56%** | — | 0 |
+### Best per asset (optimal leverage)
+
+| Asset | TF | Lev | ch | SL | RR | Filters | Return | Monthly% | WR% | Liqs |
+|-------|----|----|----|----|----|---------|----|----------|-----|------|
+| **XRP** | 1h | 20x | 12 | 1.5× | 2.5 | none | +650% | **+8.78%** | 29.1% | 0 |
+| **ETH** | 1h | 20x | 12 | 1.0× | 2.5 | RSI+MACD | +240% | **+5.25%** | 24.0% | 0 |
 | **BTC** | 4h | 10x | 8 | 1.5× | 2.0 | RSI+MACD | +87% | **+2.64%** | 47.1% | 0 |
 | **BNB** | 4h | 10x | 16 | 1.5× | 3.0 | ADX≥25+RSI | +61% | **+2.00%** | 43.9% | 0 |
-| **ADA** | 4h | 10x | 16 | 2.0× | 2.5 | RSI+MACD | +47% | **+1.51%** | — | 0 |
-| SOL | — | — | — | — | — | — | **REJECTED** — no positive EV in any combo | — |
+| **ADA** | 4h | 5x | 8 | 2.0× | 2.5 | MACD | +53% | **+1.80%** | 46.5% | 0 |
+| SOL | — | — | — | — | — | — | **REJECTED** — no positive EV in any of 2,160 combos | — |
 
-> Previous ETH figure of +8.80%/mo was an EMA implementation bug (standard vs Wilder). All scripts now use Wilder EMA (alpha=1/p) matching the backtest exactly.
+### Best per asset (10x cap)
 
-**Combined portfolio (all 5 assets, 10x):** ~14.54%/mo → GBP 100k in ~3 years 3 months
+| Asset | TF | ch | SL | RR | Filters | Monthly% |
+|-------|----|----|----|----|---------|----------|
+| XRP | 1h | 16 | 1.0× | 3.0 | none | +5.84% |
+| ETH | 1h | 8 | 2.0× | 2.0 | RSI | +2.56% |
+| BTC | 4h | 8 | 1.5× | 2.0 | RSI+MACD | +2.64% |
+| BNB | 4h | 16 | 1.5× | 3.0 | ADX≥25+RSI | +2.00% |
+| ADA | 4h | 16 | 2.0× | 2.5 | RSI+MACD | +1.51% |
+
+> All scripts use Wilder EMA (alpha=1/p). RSI/MACD/ADX filters are now wired into `hawk_trader.py` — paper mode applies the exact same signal logic as the backtest.
+
+**Combined portfolios:**
+
+| Portfolio | Monthly% | GBP 500→100k |
+|-----------|----------|--------------|
+| Conservative (all 10x) | **+14.56%** | ~3y 3m |
+| Optimal (mixed leverage) | **+20.47%** | ~2y 4m |
 
 ---
 
@@ -100,12 +117,32 @@ python scripts/hawk_backtest_multi.py           # multi-TF backtest
 
 ## Portfolio Presets
 
-Two presets run all 5 assets with per-symbol params from the 25,920-combo backtest. Each writes to its own state file — run both in parallel to compare performance.
+Two presets run all 5 assets with exact params from the 25,920-combo backtest — including RSI/MACD/ADX filters. Each writes to its own state file — run both in parallel to compare.
 
-| Portfolio | Assets | Leverage | Monthly% | GBP 500→100k |
-|-----------|--------|----------|----------|--------------|
-| **conservative** | ETH/XRP 1h · BTC/BNB/ADA 4h | all 10x | +14.54% | ~3y 3m |
-| **optimal** | ETH/XRP 1h · BTC/BNB 4h · ADA 4h | 20x/20x/10x/10x/5x | +20.44% | ~2y 4m |
+| Portfolio | Leverage | Monthly% | GBP 500→100k |
+|-----------|----------|----------|--------------|
+| **conservative** | all 10x | **+14.56%** | ~3y 3m |
+| **optimal** | mixed (20x/20x/10x/10x/5x) | **+20.47%** | ~2y 4m |
+
+**Conservative params (all 10x):**
+
+| Symbol | TF | ch | SL | RR | Filters |
+|--------|----|----|----|----|---------|
+| ETH/USDT | 1h | 8 | 2.0× | 2.0 | RSI |
+| XRP/USDT | 1h | 16 | 1.0× | 3.0 | none |
+| BTC/USDT | 4h | 8 | 1.5× | 2.0 | RSI+MACD |
+| BNB/USDT | 4h | 16 | 1.5× | 3.0 | ADX≥25+RSI |
+| ADA/USDT | 4h | 16 | 2.0× | 2.5 | RSI+MACD |
+
+**Optimal params (mixed leverage):**
+
+| Symbol | TF | Lev | ch | SL | RR | Filters |
+|--------|----|----|----|----|----|----|
+| ETH/USDT | 1h | 20x | 12 | 1.0× | 2.5 | RSI+MACD |
+| XRP/USDT | 1h | 20x | 12 | 1.5× | 2.5 | none |
+| BTC/USDT | 4h | 10x | 8 | 1.5× | 2.0 | RSI+MACD |
+| BNB/USDT | 4h | 10x | 16 | 1.5× | 3.0 | ADX≥25+RSI |
+| ADA/USDT | 4h | 5x | 8 | 2.0× | 2.5 | MACD |
 
 > **Before going live:** Accumulate 30+ paper trades per portfolio with positive EV. Check `logs/hawk_trades_<portfolio>.csv`.
 

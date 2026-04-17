@@ -81,35 +81,40 @@ STRATEGY_4H = dict(
 #  optimal:      mixed leverage → +20.44%/mo combined → GBP 100k in ~2y 4m   #
 # ─────────────────────────────────────────────────────────────────────────── #
 
-def _s1h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=30, bar_secs=3600,  funding_bars=8,  interval="1h", adx_min=None), **kw}
-def _s4h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=12, bar_secs=14400, funding_bars=2,  interval="4h", adx_min=None), **kw}
+def _s1h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=30, bar_secs=3600,  funding_bars=8,  interval="1h", adx_min=None, rsi_filter=False, macd_filter=False), **kw}
+def _s4h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=12, bar_secs=14400, funding_bars=2,  interval="4h", adx_min=None, rsi_filter=False, macd_filter=False), **kw}
 
 PORTFOLIOS: dict[str, dict] = {
     # ── Conservative: all 10x ────────────────────────────────────────────
+    # Exact params from 25,920-combo backtest (best per asset at 10x).
+    # Combined: +14.56%/mo → GBP 100k in ~3y 3m
     "conservative": {
-        "label":      "Conservative — 10x cap — +14.54%/mo — GBP 100k in ~3y 3m",
+        "label":      "Conservative — 10x cap — +14.56%/mo — GBP 100k in ~3y 3m",
         "state_file": "logs/hawk_state_conservative.json",
         "trade_log":  "logs/hawk_trades_conservative.csv",
         "symbols": [
-            # symbol       tf    lev  strategy params
-            ("ETH/USDT",  "1h", 10, _s1h(channel_n=8,  sl_atr_mult=2.0, rr=2.0)),
-            ("XRP/USDT",  "1h", 10, _s1h(channel_n=16, sl_atr_mult=1.0, rr=3.0)),
-            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0)),
-            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0)),
-            ("ADA/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=2.0, rr=2.5)),
+            # symbol       tf    lev  strategy params                    backtest result
+            ("ETH/USDT",  "1h", 10, _s1h(channel_n=8,  sl_atr_mult=2.0, rr=2.0, rsi_filter=True)),                           # +2.56%/mo
+            ("XRP/USDT",  "1h", 10, _s1h(channel_n=16, sl_atr_mult=1.0, rr=3.0)),                                             # +5.84%/mo  no filters
+            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0, rsi_filter=True,  macd_filter=True)),        # +2.64%/mo
+            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0, rsi_filter=True)),             # +2.00%/mo
+            ("ADA/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=2.0, rr=2.5, rsi_filter=True,  macd_filter=True)),        # +1.51%/mo
         ],
     },
     # ── Optimal: mixed leverage ───────────────────────────────────────────
+    # Exact params from 25,920-combo backtest (best per asset, any leverage).
+    # Combined: +20.47%/mo → GBP 100k in ~2y 4m
     "optimal": {
-        "label":      "Optimal — mixed leverage — +20.44%/mo — GBP 100k in ~2y 4m",
+        "label":      "Optimal — mixed leverage — +20.47%/mo — GBP 100k in ~2y 4m",
         "state_file": "logs/hawk_state_optimal.json",
         "trade_log":  "logs/hawk_trades_optimal.csv",
         "symbols": [
-            ("ETH/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.0, rr=2.5)),
-            ("XRP/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.5, rr=2.5)),
-            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0)),
-            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0)),
-            ("ADA/USDT",  "4h",  5, _s4h(channel_n=8,  sl_atr_mult=2.0, rr=2.5)),
+            # symbol       tf    lev  strategy params                    backtest result
+            ("ETH/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.0, rr=2.5, rsi_filter=True,  macd_filter=True)),        # +5.25%/mo
+            ("XRP/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.5, rr=2.5)),                                             # +8.78%/mo  no filters
+            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0, rsi_filter=True,  macd_filter=True)),        # +2.64%/mo
+            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0, rsi_filter=True)),             # +2.00%/mo
+            ("ADA/USDT",  "4h",  5, _s4h(channel_n=8,  sl_atr_mult=2.0, rr=2.5, macd_filter=True)),                          # +1.80%/mo
         ],
     },
 }
@@ -317,6 +322,22 @@ def _adx(h: pd.Series, l: pd.Series, c: pd.Series, p: int = 14) -> pd.Series:
     dx     = 100 * (di_pos - di_neg).abs() / (di_pos + di_neg).replace(0, 1e-10)
     return dx.ewm(alpha=1 / p, adjust=False).mean()
 
+def _rsi(c: pd.Series, p: int = 14) -> pd.Series:
+    """RSI(14) via Wilder smoothing — matches backtest exactly."""
+    delta  = c.diff().fillna(0)
+    gain   = delta.where(delta > 0, 0.0)
+    loss   = (-delta).where(delta < 0, 0.0)
+    avg_g  = gain.ewm(alpha=1 / p, adjust=False).mean()
+    avg_l  = loss.ewm(alpha=1 / p, adjust=False).mean()
+    rs     = avg_g / avg_l.replace(0, 1e-10)
+    return 100 - (100 / (1 + rs))
+
+def _macd_above(c: pd.Series) -> pd.Series:
+    """Returns 1 where MACD(12,26,9) > signal line, else 0 — matches backtest."""
+    macd = _ema(c, 12) - _ema(c, 26)
+    sig  = _ema(macd, 9)
+    return (macd > sig).astype(int)
+
 
 # ─────────────────────────────────────────────────────────────────────────── #
 #  Signal logic — identical to backtest                                         #
@@ -324,22 +345,29 @@ def _adx(h: pd.Series, l: pd.Series, c: pd.Series, p: int = 14) -> pd.Series:
 
 def compute_signals(df: pd.DataFrame, channel_n: int = 8,
                     ema_fast: int = 20, ema_slow: int = 50,
-                    compute_adx: bool = False) -> pd.DataFrame:
+                    compute_adx: bool = False,
+                    rsi_filter: bool = False,
+                    macd_filter: bool = False) -> pd.DataFrame:
     df = df.copy()
-    df["ema_f"]     = _ema(df["close"], ema_fast)
-    df["ema_s"]     = _ema(df["close"], ema_slow)
-    df["atr"]       = _atr(df["high"], df["low"], df["close"], 14)
-    df["chan_high"]  = df["high"].rolling(channel_n).max().shift(1)
-    df["chan_low"]   = df["low"].rolling(channel_n).min().shift(1)
+    df["ema_f"]    = _ema(df["close"], ema_fast)
+    df["ema_s"]    = _ema(df["close"], ema_slow)
+    df["atr"]      = _atr(df["high"], df["low"], df["close"], 14)
+    df["chan_high"] = df["high"].rolling(channel_n).max().shift(1)
+    df["chan_low"]  = df["low"].rolling(channel_n).min().shift(1)
     if compute_adx:
         df["adx"] = _adx(df["high"], df["low"], df["close"], 14)
+    if rsi_filter:
+        df["rsi"] = _rsi(df["close"], 14)
+    if macd_filter:
+        df["macd_above"] = _macd_above(df["close"])
     return df
 
 
-def get_signal(df: pd.DataFrame, adx_min: float | None = None) -> dict:
+def get_signal(df: pd.DataFrame, adx_min: float | None = None,
+               rsi_filter: bool = False, macd_filter: bool = False) -> dict:
     """
     Signal from last confirmed candle (iloc[-2]).
-    adx_min: if set, skip entries when ADX < adx_min (ranging market gate).
+    Filters applied only when their flag is True (matching backtest params per symbol).
     """
     row = df.iloc[-2]
     c   = float(row["close"])
@@ -352,31 +380,52 @@ def get_signal(df: pd.DataFrame, adx_min: float | None = None) -> dict:
     bull = etf > ets
     bear = etf < ets
 
+    # ADX gate
     adx_val = None
     adx_ok  = True
     if adx_min is not None and "adx" in df.columns:
         adx_val = float(row["adx"]) if not pd.isna(row["adx"]) else 0.0
         adx_ok  = adx_val >= adx_min
 
+    # RSI filter: long when RSI>=50, short when RSI<=50
+    rsi_val      = None
+    rsi_long_ok  = True
+    rsi_short_ok = True
+    if rsi_filter and "rsi" in df.columns:
+        rsi_val      = float(row["rsi"]) if not pd.isna(row["rsi"]) else 50.0
+        rsi_long_ok  = rsi_val >= 50.0
+        rsi_short_ok = rsi_val <= 50.0
+
+    # MACD filter: long when MACD>signal, short when MACD<signal
+    macd_val      = None
+    macd_long_ok  = True
+    macd_short_ok = True
+    if macd_filter and "macd_above" in df.columns:
+        macd_val      = int(row["macd_above"]) if not pd.isna(row["macd_above"]) else 0
+        macd_long_ok  = macd_val == 1
+        macd_short_ok = macd_val == 0
+
     signal = None
-    if adx_ok and bull and c > ch:
+    if adx_ok and rsi_long_ok and macd_long_ok and bull and c > ch:
         signal = "long"
-    elif adx_ok and bear and c < cl:
+    elif adx_ok and rsi_short_ok and macd_short_ok and bear and c < cl:
         signal = "short"
 
     return {
-        "signal":   signal,
-        "price":    c,
-        "ema_f":    etf,
-        "ema_s":    ets,
-        "atr":      atr,
-        "chan_high": ch,
-        "chan_low":  cl,
-        "adx":      adx_val,
-        "adx_ok":   adx_ok,
-        "bull":     bull,
-        "regime":   "BULL" if bull else ("BEAR" if bear else "FLAT"),
-        "ts":       df.index[-2].isoformat(),
+        "signal":    signal,
+        "price":     c,
+        "ema_f":     etf,
+        "ema_s":     ets,
+        "atr":       atr,
+        "chan_high":  ch,
+        "chan_low":   cl,
+        "adx":       adx_val,
+        "adx_ok":    adx_ok,
+        "rsi":       rsi_val,
+        "macd_above": macd_val,
+        "bull":      bull,
+        "regime":    "BULL" if bull else ("BEAR" if bear else "FLAT"),
+        "ts":        df.index[-2].isoformat(),
     }
 
 
@@ -669,12 +718,18 @@ def _process_tick(
         sync_live_positions(state, symbol, tf, executor, csv_path)
 
     # ── Fetch market data ─────────────────────────────────────────────────
-    adx_min = cfg.get("adx_min")
+    adx_min     = cfg.get("adx_min")
+    rsi_filter  = cfg.get("rsi_filter",  False)
+    macd_filter = cfg.get("macd_filter", False)
     try:
         df_raw = fetch_ohlcv(symbol, cfg["interval"], limit=200)
         df     = compute_signals(df_raw, cfg["channel_n"], cfg["ema_fast"],
-                                 cfg["ema_slow"], compute_adx=(adx_min is not None))
-        sig    = get_signal(df, adx_min=adx_min)
+                                 cfg["ema_slow"],
+                                 compute_adx=(adx_min is not None),
+                                 rsi_filter=rsi_filter,
+                                 macd_filter=macd_filter)
+        sig    = get_signal(df, adx_min=adx_min,
+                            rsi_filter=rsi_filter, macd_filter=macd_filter)
         price  = float(df_raw["close"].iloc[-1])
     except Exception as exc:
         log.error("Data fetch failed for %s [%s]: %s", symbol, tf, exc)
@@ -964,9 +1019,13 @@ Live mode env vars (not needed for --paper):
     log.info("  HAWK TRADER  [%s]", mode)
     log.info("  %s", pf_label)
     for sym, tf, lev, cfg in sym_cfgs:
-        log.info("    %-12s [%s]  %2dx  ch=%-2d  SL=%.1fx  RR=%.1f  ADX=%s",
+        filters = []
+        if cfg.get("adx_min"):    filters.append(f"ADX>={cfg['adx_min']:.0f}")
+        if cfg.get("rsi_filter"): filters.append("RSI")
+        if cfg.get("macd_filter"):filters.append("MACD")
+        log.info("    %-12s [%s]  %2dx  ch=%-2d  SL=%.1fx  RR=%.1f  filters=%s",
                  sym, tf, lev, cfg["channel_n"], cfg["sl_atr_mult"], cfg["rr"],
-                 f">={cfg['adx_min']:.0f}" if cfg.get("adx_min") else "off")
+                 "+".join(filters) if filters else "none")
     log.info("  Risk/trade: %.1f%%  |  Margin cap: %.0f%%  |  DD halt: 30%%",
              risk_pct, max_margin * 100)
     log.info("  State: %s", state_file)

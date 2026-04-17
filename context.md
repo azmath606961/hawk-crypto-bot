@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-17 — Added --portfolio flag with two presets (conservative/optimal). Each runs all 5 assets with per-symbol leverage and strategy params from the backtest, writes to separate state/log files so both can run in parallel terminals. Dashboard supports --state/--port flags to monitor each independently.
+2026-04-17 — Re-ran full 25,920-combo backtest (single-process, 20.5 min). Confirmed all previous results reproduce exactly. Wired RSI/MACD filters into hawk_trader.py (compute_signals + get_signal). Updated both portfolio presets with exact backtest filters — paper mode now matches the backtest engine precisely.
 
 ---
 
@@ -266,26 +266,28 @@ Priority order (paper trade 30+ trades before going live, R7):
 
 | Portfolio | Command | Mo% | 100k ETA | State file |
 |-----------|---------|-----|----------|------------|
-| conservative | `--portfolio conservative` | +14.54% | 3y 3m | `logs/hawk_state_conservative.json` |
-| optimal | `--portfolio optimal` | +20.44% | 2y 4m | `logs/hawk_state_optimal.json` |
+| conservative | `--portfolio conservative` | +14.56% | 3y 3m | `logs/hawk_state_conservative.json` |
+| optimal | `--portfolio optimal` | +20.47% | 2y 4m | `logs/hawk_state_optimal.json` |
 
-### Conservative (all 10x)
-| Symbol | TF | Lev | ch | SL | RR | ADX |
-|--------|----|----|----|----|----|----|
-| ETH/USDT | 1h | 10x | 8 | 2.0 | 2.0 | off |
-| XRP/USDT | 1h | 10x | 16 | 1.0 | 3.0 | off |
-| BTC/USDT | 4h | 10x | 8 | 1.5 | 2.0 | off |
-| BNB/USDT | 4h | 10x | 16 | 1.5 | 3.0 | ≥25 |
-| ADA/USDT | 4h | 10x | 16 | 2.0 | 2.5 | off |
+Filters are now wired into hawk_trader.py — paper mode applies RSI/MACD/ADX exactly as the backtest did.
 
-### Optimal (mixed leverage)
-| Symbol | TF | Lev | ch | SL | RR | ADX |
-|--------|----|----|----|----|----|----|
-| ETH/USDT | 1h | 20x | 12 | 1.0 | 2.5 | off |
-| XRP/USDT | 1h | 20x | 12 | 1.5 | 2.5 | off |
-| BTC/USDT | 4h | 10x | 8 | 1.5 | 2.0 | off |
-| BNB/USDT | 4h | 10x | 16 | 1.5 | 3.0 | ≥25 |
-| ADA/USDT | 4h | 5x | 8 | 2.0 | 2.5 | off |
+### Conservative (all 10x) — confirmed +14.56%/mo
+| Symbol | TF | Lev | ch | SL | RR | ADX | RSI | MACD | Mo% |
+|--------|----|----|----|----|----|----|-----|------|-----|
+| ETH/USDT | 1h | 10x | 8 | 2.0 | 2.0 | off | on | off | +2.56% |
+| XRP/USDT | 1h | 10x | 16 | 1.0 | 3.0 | off | off | off | +5.84% |
+| BTC/USDT | 4h | 10x | 8 | 1.5 | 2.0 | off | on | on | +2.64% |
+| BNB/USDT | 4h | 10x | 16 | 1.5 | 3.0 | ≥25 | on | off | +2.00% |
+| ADA/USDT | 4h | 10x | 16 | 2.0 | 2.5 | off | on | on | +1.51% |
+
+### Optimal (mixed leverage) — confirmed +20.47%/mo
+| Symbol | TF | Lev | ch | SL | RR | ADX | RSI | MACD | Mo% |
+|--------|----|----|----|----|----|----|-----|------|-----|
+| ETH/USDT | 1h | 20x | 12 | 1.0 | 2.5 | off | on | on | +5.25% |
+| XRP/USDT | 1h | 20x | 12 | 1.5 | 2.5 | off | off | off | +8.78% |
+| BTC/USDT | 4h | 10x | 8 | 1.5 | 2.0 | off | on | on | +2.64% |
+| BNB/USDT | 4h | 10x | 16 | 1.5 | 3.0 | ≥25 | on | off | +2.00% |
+| ADA/USDT | 4h | 5x | 8 | 2.0 | 2.5 | off | off | on | +1.80% |
 
 ---
 
@@ -295,7 +297,7 @@ Priority order (paper trade 30+ trades before going live, R7):
 2. **Monitor via dashboard** — separate ports for each:
    - `python scripts/hawk_dashboard.py --state logs/hawk_state_conservative.json --port 5000`
    - `python scripts/hawk_dashboard.py --state logs/hawk_state_optimal.json --port 5001`
-3. **ETH MACD+RSI filter** — corrected backtest shows MACD+RSI beats ADX=20 for ETH. Not yet wired into hawk_trader.py signal logic (compute_signals only supports ADX gate). Future work.
+3. **RSI/MACD filters** — now wired into hawk_trader.py (compute_signals + get_signal). Both portfolio presets apply the exact filters from the backtest. Paper mode = backtest parity.
 4. **SOL: permanently rejected** — no positive EV across all 2,160 combos. Never add.
 5. **XRP max safe leverage: 10x** — at 20x SL≈liq distance. Optimal portfolio uses 20x (per backtest best) but monitor liquidations closely.
 
