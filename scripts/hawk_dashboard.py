@@ -496,24 +496,47 @@ def index():
 #  Main                                                                         #
 # ─────────────────────────────────────────────────────────────────────────── #
 
+_PORTFOLIO_DEFAULTS = {
+    "conservative": ("logs/hawk_state_conservative.json", "logs/hawk_trades_conservative.csv", 5000),
+    "optimal":      ("logs/hawk_state_optimal.json",      "logs/hawk_trades_optimal.csv",      5002),
+}
+
+
 def main():
     global STATE_FILE, TRADE_LOG
 
-    parser = argparse.ArgumentParser(description="HAWK Trading Dashboard")
-    parser.add_argument("--state", default="logs/hawk_state.json")
-    parser.add_argument("--trades", default="logs/hawk_trades.csv")
-    parser.add_argument("--port",  type=int, default=5000)
-    parser.add_argument("--host",  default="127.0.0.1")
+    parser = argparse.ArgumentParser(
+        description="HAWK Trading Dashboard",
+        epilog=(
+            "Portfolio shortcuts:\n"
+            "  --portfolio conservative   # port 5000\n"
+            "  --portfolio optimal        # port 5002\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--portfolio", choices=list(_PORTFOLIO_DEFAULTS.keys()),
+                        help="Shortcut: auto-fills --state, --trades, --port")
+    parser.add_argument("--state",  default=None)
+    parser.add_argument("--trades", default=None)
+    parser.add_argument("--port",   type=int, default=None)
+    parser.add_argument("--host",   default="127.0.0.1")
     args = parser.parse_args()
 
-    STATE_FILE = args.state
-    TRADE_LOG  = args.trades
+    if args.portfolio:
+        def_state, def_trades, def_port = _PORTFOLIO_DEFAULTS[args.portfolio]
+        STATE_FILE = args.state  or def_state
+        TRADE_LOG  = args.trades or def_trades
+        port       = args.port   or def_port
+    else:
+        STATE_FILE = args.state  or "logs/hawk_state.json"
+        TRADE_LOG  = args.trades or "logs/hawk_trades.csv"
+        port       = args.port   or 5000
 
-    print(f"\n  HAWK Dashboard running at http://{args.host}:{args.port}")
+    print(f"\n  HAWK Dashboard running at http://{args.host}:{port}")
     print(f"  State file : {STATE_FILE}")
     print(f"  Trade log  : {TRADE_LOG}\n")
 
-    app.run(host=args.host, port=args.port, debug=False)
+    app.run(host=args.host, port=port, debug=False)
 
 
 if __name__ == "__main__":
