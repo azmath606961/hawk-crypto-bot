@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-18 — Added volume Z-score filter (Institutional Volume Flow concept) as A/B test. Two new parallel portfolios: `conservative_vol` and `optimal_vol` — identical to existing presets but with vol_filter=True on ETH/XRP 1h symbols. Added hawk_comparator.py (4-way terminal comparison) and hawk_volume_study.py (focused backtest). hawk_dashboard.py updated with --portfolio shortcut (ports 5000–5003). PR #1 open for review — original portfolios unchanged.
+2026-04-18 — Added vol-filter A/B portfolios (PR #1 open, not merged). Portfolio-level backtest attempted but has bugs — conservative_vol showing -601% (wrong). **NEXT SESSION TODO: fix hawk_portfolio_backtest.py or run per-asset vol_filter test using the proven run_combo engine from hawk_comprehensive_backtest.py. Do not trust portfolio_backtest_results.csv — it is incorrect.**
 
 ---
 
@@ -327,15 +327,48 @@ Compare with: `python scripts/hawk_comparator.py --watch`
 
 ## Open Issues / Next Steps
 
-1. **Run all 4 portfolios in parallel** — conservative, conservative_vol, optimal, optimal_vol. Compare after 30+ trades via hawk_comparator.py.
-2. **Monitor via dashboard** — `--portfolio` shortcut auto-fills state/trades/port:
+1. **PRIORITY: Fix portfolio-level backtest** — `hawk_portfolio_backtest.py` has bugs (conservative_vol shows -601% which is impossible). The bug is likely in shared-equity simulation, funding, or 4h/1h timeline alignment. **Recommended fix:** write a targeted per-asset vol_filter test using the PROVEN `run_combo` engine from `hawk_comprehensive_backtest.py`. Add `vol_filter` + `vol_thresh` array as optional params to `run_combo`, run exact portfolio params × vol on/off, sum monthly% per-asset to get portfolio estimate. This avoids rebuilding a complex multi-asset engine.
+2. **Run all 4 portfolios in parallel** — conservative, conservative_vol, optimal, optimal_vol. Compare after 30+ trades via hawk_comparator.py.
+3. **Monitor via dashboard** — `--portfolio` shortcut auto-fills state/trades/port:
    - `python scripts/hawk_dashboard.py --portfolio conservative`     → port 5000
    - `python scripts/hawk_dashboard.py --portfolio conservative_vol` → port 5001
    - `python scripts/hawk_dashboard.py --portfolio optimal`          → port 5002
    - `python scripts/hawk_dashboard.py --portfolio optimal_vol`      → port 5003
-3. **PR #1 merge gate** — merge `conservative_vol` / `optimal_vol` to master only after 30+ trades confirm vol variants show equal or better EV vs baselines.
-4. **SOL: permanently rejected** — no positive EV across all 2,160 combos. Never add.
-5. **XRP max safe leverage: 10x** — at 20x SL≈liq distance. Optimal portfolio uses 20x (per backtest best) but monitor liquidations closely.
+4. **PR #1 merge gate** — merge `conservative_vol` / `optimal_vol` to master only after: (a) per-asset backtest confirms vol_filter positive delta using run_combo engine, AND (b) 30+ paper trades confirm positive EV vs baselines.
+5. **SOL: permanently rejected** — no positive EV across all 2,160 combos. Never add.
+6. **XRP max safe leverage: 10x** — at 20x SL≈liq distance. Optimal portfolio uses 20x (per backtest best) but monitor liquidations closely.
+
+## In-Progress Work (PR #1 — branch: claude/reverent-yalow-2e1e8a)
+
+Files added/changed in PR #1 (NOT yet merged to master):
+- `scripts/hawk_trader.py` — added `vol_filter` param to `compute_signals`, `get_signal`, `_process_tick`; added `conservative_vol` and `optimal_vol` portfolio presets; added VOL to startup banner
+- `scripts/hawk_dashboard.py` — added `--portfolio` shortcut mapping to ports 5000-5003
+- `scripts/hawk_comparator.py` — NEW: 4-way terminal comparison of all portfolios with A/B delta insights
+- `scripts/hawk_volume_study.py` — NEW: focused per-asset vol_filter + body_ratio backtest (uses custom engine, results directionally useful but baselines don't match comprehensive backtest — not fully trusted)
+- `scripts/hawk_portfolio_backtest.py` — NEW: portfolio-level backtest (BUGGY — do not trust results, needs fix next session)
+- `data/volume_study_results.csv` — results from hawk_volume_study.py (directional only)
+- `data/portfolio_backtest_results.csv` — results from hawk_portfolio_backtest.py (INCORRECT — ignore)
+
+## Vol Filter Implementation Details
+
+```python
+# In compute_signals() — added:
+if vol_filter:
+    df["vol_mean"] = df["volume"].rolling(20).mean()
+    df["vol_std"]  = df["volume"].rolling(20).std()
+    df["vol_ok"]   = df["volume"] >= (df["vol_mean"] + 0.5 * df["vol_std"])
+
+# In get_signal() — added:
+vol_ok = True
+if vol_filter and "vol_ok" in df.columns:
+    vol_ok = bool(row["vol_ok"]) if not pd.isna(row["vol_ok"]) else True
+
+# Signal gate (added vol_ok):
+if adx_ok and rsi_long_ok and macd_long_ok and vol_ok and bull and c > ch:
+    signal = "long"
+```
+
+Portfolio presets applying vol_filter=True: ETH/XRP 1h only (vol filter hurts 4h per study).
 
 ---
 
