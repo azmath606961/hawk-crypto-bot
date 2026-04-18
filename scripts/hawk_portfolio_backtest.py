@@ -1,20 +1,17 @@
 """
 HAWK Portfolio Backtest
 =======================
-Runs the 4 portfolio presets through the same run_combo engine used by the
-comprehensive backtester — so vol=off results are identical to the originals.
+Runs the 2 portfolio presets through the same run_combo engine used by the
+comprehensive backtester.
 
 Portfolios:
-  conservative     — original, 10x, no vol filter
-  optimal          — original, mixed leverage, no vol filter
-  conservative_vol — conservative + vol_filter on ETH/XRP 1h
-  optimal_vol      — optimal + vol_filter on ETH/XRP 1h
+  conservative     — 10x all assets
+  optimal          — mixed leverage
 
 Usage:
-  python scripts/hawk_portfolio_backtest.py                   # all 4 + comparison
+  python scripts/hawk_portfolio_backtest.py                   # both + comparison
   python scripts/hawk_portfolio_backtest.py --portfolio conservative
-  python scripts/hawk_portfolio_backtest.py --portfolio optimal_vol
-  python scripts/hawk_portfolio_backtest.py --compare conservative conservative_vol
+  python scripts/hawk_portfolio_backtest.py --compare conservative optimal
 
 Output: stdout table + data/portfolio_backtest_results.csv
 """
@@ -44,7 +41,7 @@ from scripts.hawk_comprehensive_backtest import (
 
 PORTFOLIOS: dict[str, dict] = {
     "conservative": {
-        "label": "Conservative — 10x all — no vol filter",
+        "label": "Conservative — 10x all",
         "assets": [
             ("ETHUSDT", "1h", 10,  8,  2.0, 2.0,  0.0, True,  False, False),
             ("XRPUSDT", "1h", 10, 16,  1.0, 3.0,  0.0, False, False, False),
@@ -54,33 +51,13 @@ PORTFOLIOS: dict[str, dict] = {
         ],
     },
     "optimal": {
-        "label": "Optimal — mixed leverage — no vol filter",
+        "label": "Optimal — mixed leverage",
         "assets": [
             ("ETHUSDT", "1h", 20, 12,  1.0, 2.5,  0.0, True,  True,  False),
             ("XRPUSDT", "1h", 20, 12,  1.5, 2.5,  0.0, False, False, False),
             ("BTCUSDT", "4h", 10,  8,  1.5, 2.0,  0.0, True,  True,  False),
             ("BNBUSDT", "4h", 10, 16,  1.5, 3.0, 25.0, True,  False, False),
             ("ADAUSDT", "4h",  5,  8,  2.0, 2.5,  0.0, False, True,  False),
-        ],
-    },
-    "conservative_vol": {
-        "label": "Conservative+Vol — 10x all — vol filter on ETH/XRP 1h",
-        "assets": [
-            ("ETHUSDT", "1h", 10,  8,  2.0, 2.0,  0.0, True,  False, True),   # vol ON
-            ("XRPUSDT", "1h", 10, 16,  1.0, 3.0,  0.0, False, False, True),   # vol ON
-            ("BTCUSDT", "4h", 10,  8,  1.5, 2.0,  0.0, True,  True,  False),  # unchanged
-            ("BNBUSDT", "4h", 10, 16,  1.5, 3.0, 25.0, True,  False, False),  # unchanged
-            ("ADAUSDT", "4h", 10, 16,  2.0, 2.5,  0.0, True,  True,  False),  # unchanged
-        ],
-    },
-    "optimal_vol": {
-        "label": "Optimal+Vol — mixed leverage — vol filter on ETH/XRP 1h",
-        "assets": [
-            ("ETHUSDT", "1h", 20, 12,  1.0, 2.5,  0.0, True,  True,  True),   # vol ON
-            ("XRPUSDT", "1h", 20, 12,  1.5, 2.5,  0.0, False, False, True),   # vol ON
-            ("BTCUSDT", "4h", 10,  8,  1.5, 2.0,  0.0, True,  True,  False),  # unchanged
-            ("BNBUSDT", "4h", 10, 16,  1.5, 3.0, 25.0, True,  False, False),  # unchanged
-            ("ADAUSDT", "4h",  5,  8,  2.0, 2.5,  0.0, False, True,  False),  # unchanged
         ],
     },
 }
@@ -261,24 +238,6 @@ def print_comparison(all_results: dict[str, list[dict]]) -> None:
         total_line += f"  {totals[n]:>+{col_w}.2f}%"
     print(total_line)
 
-    # Delta rows vs baseline portfolios
-    pairs = [
-        ("conservative_vol", "conservative"),
-        ("optimal_vol",      "optimal"),
-    ]
-    for vol_name, base_name in pairs:
-        if vol_name in totals and base_name in totals:
-            delta = totals[vol_name] - totals[base_name]
-            marker = " ✓ vol helps" if delta > 0 else " ✗ vol hurts"
-            delta_line = f"  {'Δ ' + vol_name + ' vs ' + base_name:<15}"
-            delta_line = f"  Delta {vol_name} vs {base_name}:"
-            delta_line += f"  {delta:>+.2f}%/mo{marker}"
-            print(delta_line)
-
-    # Answer the "same as original?" question
-    print()
-    print("  Note: conservative_vol / optimal_vol with VOL=off are byte-for-byte")
-    print("  identical to conservative / optimal (same engine, same params).")
     print(f"{'=' * 104}")
 
 
@@ -286,12 +245,12 @@ def print_comparison(all_results: dict[str, list[dict]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="HAWK portfolio backtest — compare conservative / optimal / vol variants"
+        description="HAWK portfolio backtest — compare conservative / optimal"
     )
     parser.add_argument(
         "--portfolio", "-p",
         choices=list(PORTFOLIOS.keys()),
-        help="Run a single portfolio (default: all 4)",
+        help="Run a single portfolio (default: both)",
     )
     parser.add_argument(
         "--compare", "-c",
@@ -306,7 +265,6 @@ def main() -> None:
     print("\n" + "=" * 104)
     print("  HAWK PORTFOLIO BACKTEST")
     print("  Engine: hawk_comprehensive_backtest.run_combo  (Wilder EMA, exact portfolio params)")
-    print("  Note:   vol=off results are identical to original conservative / optimal backtests")
     print("=" * 104 + "\n")
 
     # Which portfolios to run

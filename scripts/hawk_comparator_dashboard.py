@@ -1,13 +1,11 @@
 """
 HAWK Comparator Dashboard
 ==========================
-Single Flask page showing all 4 portfolios side-by-side.
+Single Flask page showing both portfolios side-by-side.
 Combines the terminal comparator with the single-portfolio dashboard UI.
 
   conservative       — baseline 10x
-  optimal            — baseline mixed leverage
-  conservative_vol   — 10x + vol filter on 1h (A/B)
-  optimal_vol        — mixed leverage + vol filter on 1h (A/B)
+  optimal            — mixed leverage
 
 Usage:
   python scripts/hawk_comparator_dashboard.py          # port 5010
@@ -34,26 +32,18 @@ LOGS_DIR    = os.path.join(os.path.dirname(__file__), "..", "logs")
 GBP_TO_USDT = 1.27
 
 PORTFOLIOS = [
-    dict(key="conservative",     label="Conservative",     short="Consv",
-         state="hawk_state_conservative.json",     trades="hawk_trades_conservative.csv",
+    dict(key="conservative", label="Conservative", short="Consv",
+         state="hawk_state_conservative.json", trades="hawk_trades_conservative.csv",
          color="#58a6ff"),
-    dict(key="optimal",          label="Optimal",          short="Optim",
-         state="hawk_state_optimal.json",          trades="hawk_trades_optimal.csv",
+    dict(key="optimal",      label="Optimal",      short="Optim",
+         state="hawk_state_optimal.json",      trades="hawk_trades_optimal.csv",
          color="#3fb950"),
-    dict(key="conservative_vol", label="Conservative+Vol", short="Consv+V",
-         state="hawk_state_conservative_vol.json", trades="hawk_trades_conservative_vol.csv",
-         color="#e3b341"),
-    dict(key="optimal_vol",      label="Optimal+Vol",      short="Optim+V",
-         state="hawk_state_optimal_vol.json",      trades="hawk_trades_optimal_vol.csv",
-         color="#f78166"),
 ]
 
 # Backtest reference numbers per portfolio
 BACKTEST = {
-    "conservative":     {"monthly_pct": 14.54, "win_rate": 36.6, "rr": 2.54},
-    "optimal":          {"monthly_pct": 20.44, "win_rate": 31.1, "rr": 5.26},
-    "conservative_vol": {"monthly_pct":  4.17, "win_rate": 35.4, "rr": 1.08},
-    "optimal_vol":      {"monthly_pct":  7.94, "win_rate": 31.4, "rr": 1.22},
+    "conservative": {"monthly_pct": 14.54, "win_rate": 36.6, "rr": 2.54},
+    "optimal":      {"monthly_pct": 20.44, "win_rate": 31.1, "rr": 5.26},
 }
 
 
@@ -213,7 +203,7 @@ header h1 { font-size:17px; font-weight:600; color:#58a6ff; }
 .refresh-note { font-size:11px; color:#8b949e; text-align:right; margin-bottom:12px; }
 
 /* Portfolio cards grid */
-.pf-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
+.pf-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:18px; }
 .pf-card { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:14px 16px; border-top:3px solid var(--accent); }
 .pf-card h2 { font-size:13px; font-weight:600; color:var(--accent); margin-bottom:10px; }
 .pf-card .winner-badge { display:inline-block; background:#0d2b1a; color:#3fb950; border:1px solid #238636; border-radius:10px; font-size:10px; font-weight:700; padding:1px 8px; margin-left:6px; vertical-align:middle; }
@@ -232,12 +222,6 @@ header h1 { font-size:17px; font-weight:600; color:#58a6ff; }
 .charts-row { display:grid; grid-template-columns:2fr 1fr; gap:14px; margin-bottom:18px; }
 .chart-box { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:16px; }
 .chart-box h2 { font-size:11px; color:#8b949e; text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; }
-
-/* Insights */
-.insights { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:14px 18px; margin-bottom:18px; }
-.insights h2 { font-size:11px; color:#8b949e; text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; }
-.insight-pair { display:flex; gap:24px; flex-wrap:wrap; margin-bottom:6px; }
-.insight-item { font-size:13px; }
 
 /* Tabs */
 .tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
@@ -260,7 +244,6 @@ tr:hover td { background:#1c2128; }
 .badge.liq     { background:#3b0d0d; color:#f85149; }
 .empty { text-align:center; color:#8b949e; padding:16px; }
 
-@media(max-width:1100px) { .pf-grid { grid-template-columns:repeat(2,1fr); } }
 @media(max-width:700px)  { .pf-grid { grid-template-columns:1fr; } .charts-row { grid-template-columns:1fr; } }
 </style>
 </head>
@@ -269,7 +252,7 @@ tr:hover td { background:#1c2128; }
 <header>
   <div>
     <h1>HAWK Comparator Dashboard</h1>
-    <div class="sub">Conservative · Optimal · +Vol variants — side-by-side</div>
+    <div class="sub">Conservative · Optimal — side-by-side</div>
   </div>
   <div class="sub" id="last-update">Loading...</div>
 </header>
@@ -292,9 +275,6 @@ tr:hover td { background:#1c2128; }
     </div>
   </div>
 
-  <!-- Insights -->
-  <div class="insights" id="insights"></div>
-
   <!-- Open positions -->
   <div class="table-box">
     <h2>Open Positions</h2>
@@ -316,7 +296,7 @@ let activePosTab   = null;
 let activeTradeTab = null;
 let lastData       = null;
 
-const PF_KEYS = ['conservative','optimal','conservative_vol','optimal_vol'];
+const PF_KEYS = ['conservative','optimal'];
 
 function fmt(v, d=2) { return v == null ? '—' : Number(v).toFixed(d); }
 function sign(v)     { return v >= 0 ? '+' : ''; }
@@ -450,40 +430,6 @@ function renderCharts(data) {
   });
 }
 
-function renderInsights(data) {
-  const pfdata = data.portfolios;
-  let html = '<h2>Insights — vol filter vs baseline</h2><div class="insight-pair">';
-
-  const pairs = [
-    ['conservative', 'conservative_vol', 'Conservative'],
-    ['optimal',      'optimal_vol',      'Optimal'],
-  ];
-
-  pairs.forEach(([baseKey, volKey, name]) => {
-    const base = pfdata[baseKey];
-    const vol  = pfdata[volKey];
-    if (!base?.stats?.running || !vol?.stats?.running) {
-      html += `<div class="insight-item grey">${name}: start both bots to compare</div>`;
-      return;
-    }
-    const bs = base.stats, vs = vol.stats;
-    const eqDelta  = vs.equity - bs.equity;
-    const pnlDelta = vs.total_pnl - bs.total_pnl;
-    const ahead    = eqDelta >= 0;
-    const winner   = ahead ? volKey.replace('_',' ') : baseKey;
-    html += `<div class="insight-item">
-      <strong style="color:${ahead ? '#3fb950' : '#f85149'}">${name} vol filter is ${ahead ? '▲ AHEAD' : '▼ BEHIND'}</strong>
-      by <strong>$${Math.abs(eqDelta).toFixed(2)}</strong> equity
-      (PnL delta: <span class="${cls(pnlDelta)}">${sign(pnlDelta)}$${Math.abs(pnlDelta).toFixed(2)}</span>)
-      &nbsp;·&nbsp; WR: ${fmt(bs.win_rate,1)}% → ${fmt(vs.win_rate,1)}%
-      &nbsp;·&nbsp; RR: ${fmt(bs.rr,2)} → ${fmt(vs.rr,2)}
-    </div>`;
-  });
-
-  html += '</div>';
-  document.getElementById('insights').innerHTML = html;
-}
-
 function renderTabs(containerId, bodyId, tabKey, data, renderFn) {
   const pfdata = data.portfolios;
   const running = PF_KEYS.filter(k => pfdata[k]?.stats?.running);
@@ -550,7 +496,6 @@ async function refresh() {
     document.getElementById('last-update').textContent = 'Updated: ' + lastData.now;
     renderCards(lastData);
     renderCharts(lastData);
-    renderInsights(lastData);
     renderBody();
   } catch(e) {
     console.error('Refresh failed:', e);
@@ -577,7 +522,7 @@ def main() -> None:
     args = parser.parse_args()
 
     print(f"\n  HAWK Comparator Dashboard → http://{args.host}:{args.port}")
-    print("  Shows: conservative · optimal · conservative_vol · optimal_vol")
+    print("  Shows: conservative · optimal")
     print("  Auto-refreshes every 30s. Ctrl+C to stop.\n")
     app.run(host=args.host, port=args.port, debug=False)
 

@@ -110,7 +110,7 @@ python scripts/hawk_dashboard.py --portfolio optimal        # http://localhost:5
 python scripts/hawk_comparator_dashboard.py                 # http://localhost:5010
 
 # ── Portfolio backtest (exact preset params, ~20s) ────────────────────────────
-python scripts/hawk_portfolio_backtest.py                   # all 4 portfolios + comparison
+python scripts/hawk_portfolio_backtest.py                   # both portfolios + comparison
 python scripts/hawk_portfolio_backtest.py --portfolio conservative  # single
 
 # ── Live trading ──────────────────────────────────────────────────────────────
