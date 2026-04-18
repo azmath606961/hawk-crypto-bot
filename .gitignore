@@ -5,4 +5,5 @@ __pycache__/
 logs/
 *.log
 .env
+.venv/
 secrets_local.py
