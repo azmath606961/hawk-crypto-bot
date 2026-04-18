@@ -91,20 +91,26 @@ pip install -r requirements.txt
 `hawk_trader.py` is the single unified runner — **identical HAWK v6 strategy** in paper and live mode.
 
 ```bash
-# ── Paper trading (no API key needed) ────────────────────────────────────────
+# ── Paper trading — baseline portfolios ───────────────────────────────────────
+python scripts/hawk_trader.py --paper --portfolio conservative      # 10x all, +14.56%/mo
+python scripts/hawk_trader.py --paper --portfolio optimal           # mixed leverage, +20.47%/mo
 
-# Conservative portfolio — all 10x, +14.54%/mo (Terminal 1)
-python scripts/hawk_trader.py --paper --portfolio conservative
-
-# Optimal portfolio — mixed leverage, +20.44%/mo (Terminal 2)
-python scripts/hawk_trader.py --paper --portfolio optimal
+# ── Paper trading — A/B test portfolios (vol filter on ETH/XRP 1h) ────────────
+python scripts/hawk_trader.py --paper --portfolio conservative_vol  # baseline + vol filter
+python scripts/hawk_trader.py --paper --portfolio optimal_vol       # baseline + vol filter
 
 # Single test tick — verify it runs before leaving it overnight
 python scripts/hawk_trader.py --paper --portfolio conservative --run-once
 
-# ── Dashboard ─────────────────────────────────────────────────────────────────
-python scripts/hawk_dashboard.py --state logs/hawk_state_conservative.json --port 5000
-python scripts/hawk_dashboard.py --state logs/hawk_state_optimal.json --port 5001
+# ── Dashboards (one per terminal, --portfolio auto-fills state/port) ───────────
+python scripts/hawk_dashboard.py --portfolio conservative        # http://localhost:5000
+python scripts/hawk_dashboard.py --portfolio conservative_vol    # http://localhost:5001
+python scripts/hawk_dashboard.py --portfolio optimal             # http://localhost:5002
+python scripts/hawk_dashboard.py --portfolio optimal_vol         # http://localhost:5003
+
+# ── 4-way comparator ──────────────────────────────────────────────────────────
+python scripts/hawk_comparator.py            # one-shot snapshot
+python scripts/hawk_comparator.py --watch    # refresh every 60s
 
 # ── Live trading ──────────────────────────────────────────────────────────────
 python scripts/hawk_trader.py --testnet --portfolio conservative   # testnet first
@@ -112,39 +118,43 @@ python scripts/hawk_trader.py --portfolio conservative             # real money
 
 # ── Backtests ─────────────────────────────────────────────────────────────────
 python scripts/hawk_comprehensive_backtest.py   # 25,920-combo grid search
-python scripts/hawk_backtest_multi.py           # multi-TF backtest
+python scripts/hawk_volume_study.py             # focused vol/body filter study
 ```
 
 ## Portfolio Presets
 
-Two presets run all 5 assets with exact params from the 25,920-combo backtest — including RSI/MACD/ADX filters. Each writes to its own state file — run both in parallel to compare.
+Four presets — two baselines + two A/B test variants with volume Z-score filter. Each writes to its own state file and trade log.
 
-| Portfolio | Leverage | Monthly% | GBP 500→100k |
-|-----------|----------|----------|--------------|
-| **conservative** | all 10x | **+14.56%** | ~3y 3m |
-| **optimal** | mixed (20x/20x/10x/10x/5x) | **+20.47%** | ~2y 4m |
+| Portfolio | Leverage | Monthly% | GBP 500→100k | Notes |
+|-----------|----------|----------|--------------|-------|
+| **conservative** | all 10x | **+14.56%** | ~3y 3m | Baseline |
+| **conservative_vol** | all 10x | TBD (A/B) | TBD | +Vol filter on ETH/XRP 1h |
+| **optimal** | mixed (20x/20x/10x/10x/5x) | **+20.47%** | ~2y 4m | Baseline |
+| **optimal_vol** | mixed (20x/20x/10x/10x/5x) | TBD (A/B) | TBD | +Vol filter on ETH/XRP 1h |
 
-**Conservative params (all 10x):**
+**Conservative / Conservative+Vol params (all 10x):**
 
-| Symbol | TF | ch | SL | RR | Filters |
-|--------|----|----|----|----|---------|
-| ETH/USDT | 1h | 8 | 2.0× | 2.0 | RSI |
-| XRP/USDT | 1h | 16 | 1.0× | 3.0 | none |
-| BTC/USDT | 4h | 8 | 1.5× | 2.0 | RSI+MACD |
-| BNB/USDT | 4h | 16 | 1.5× | 3.0 | ADX≥25+RSI |
-| ADA/USDT | 4h | 16 | 2.0× | 2.5 | RSI+MACD |
+| Symbol | TF | ch | SL | RR | Filters (baseline) | Filters (+vol) |
+|--------|----|----|----|----|-------------------|----------------|
+| ETH/USDT | 1h | 8 | 2.0× | 2.0 | RSI | RSI+VOL |
+| XRP/USDT | 1h | 16 | 1.0× | 3.0 | none | VOL |
+| BTC/USDT | 4h | 8 | 1.5× | 2.0 | RSI+MACD | RSI+MACD (unchanged) |
+| BNB/USDT | 4h | 16 | 1.5× | 3.0 | ADX≥25+RSI | ADX≥25+RSI (unchanged) |
+| ADA/USDT | 4h | 16 | 2.0× | 2.5 | RSI+MACD | RSI+MACD (unchanged) |
 
-**Optimal params (mixed leverage):**
+**Optimal / Optimal+Vol params (mixed leverage):**
 
-| Symbol | TF | Lev | ch | SL | RR | Filters |
-|--------|----|----|----|----|----|----|
-| ETH/USDT | 1h | 20x | 12 | 1.0× | 2.5 | RSI+MACD |
-| XRP/USDT | 1h | 20x | 12 | 1.5× | 2.5 | none |
-| BTC/USDT | 4h | 10x | 8 | 1.5× | 2.0 | RSI+MACD |
-| BNB/USDT | 4h | 10x | 16 | 1.5× | 3.0 | ADX≥25+RSI |
-| ADA/USDT | 4h | 5x | 8 | 2.0× | 2.5 | MACD |
+| Symbol | TF | Lev | ch | SL | RR | Filters (baseline) | Filters (+vol) |
+|--------|----|----|----|----|----|--------------------|----------------|
+| ETH/USDT | 1h | 20x | 12 | 1.0× | 2.5 | RSI+MACD | RSI+MACD+VOL |
+| XRP/USDT | 1h | 20x | 12 | 1.5× | 2.5 | none | VOL |
+| BTC/USDT | 4h | 10x | 8 | 1.5× | 2.0 | RSI+MACD | RSI+MACD (unchanged) |
+| BNB/USDT | 4h | 10x | 16 | 1.5× | 3.0 | ADX≥25+RSI | ADX≥25+RSI (unchanged) |
+| ADA/USDT | 4h | 5x | 8 | 2.0× | 2.5 | MACD | MACD (unchanged) |
 
-> **Before going live:** Accumulate 30+ paper trades per portfolio with positive EV. Check `logs/hawk_trades_<portfolio>.csv`.
+**Volume filter logic:** Signal candle volume must be ≥ 20-bar rolling mean + 0.5σ. Applied to 1h strategies only (4h backtest showed negative delta). Study results: ETH 1h +1.96%/mo delta, XRP 1h +2.74%/mo delta.
+
+> **Before going live:** Accumulate 30+ paper trades per portfolio with positive EV. Check `logs/hawk_trades_<portfolio>.csv`. Vol-filter variants require PR approval before merging to master.
 
 ---
 

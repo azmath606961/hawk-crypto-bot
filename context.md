@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-17 — Re-ran full 25,920-combo backtest (single-process, 20.5 min). Confirmed all previous results reproduce exactly. Wired RSI/MACD filters into hawk_trader.py (compute_signals + get_signal). Updated both portfolio presets with exact backtest filters — paper mode now matches the backtest engine precisely.
+2026-04-18 — Added volume Z-score filter (Institutional Volume Flow concept) as A/B test. Two new parallel portfolios: `conservative_vol` and `optimal_vol` — identical to existing presets but with vol_filter=True on ETH/XRP 1h symbols. Added hawk_comparator.py (4-way terminal comparison) and hawk_volume_study.py (focused backtest). hawk_dashboard.py updated with --portfolio shortcut (ports 5000–5003). PR #1 open for review — original portfolios unchanged.
 
 ---
 
@@ -264,12 +264,14 @@ Priority order (paper trade 30+ trades before going live, R7):
 
 ## Portfolio Presets (hawk_trader.py --portfolio)
 
-| Portfolio | Command | Mo% | 100k ETA | State file |
-|-----------|---------|-----|----------|------------|
-| conservative | `--portfolio conservative` | +14.56% | 3y 3m | `logs/hawk_state_conservative.json` |
-| optimal | `--portfolio optimal` | +20.47% | 2y 4m | `logs/hawk_state_optimal.json` |
+| Portfolio | Command | Mo% | 100k ETA | State file | Notes |
+|-----------|---------|-----|----------|------------|-------|
+| conservative | `--portfolio conservative` | +14.56% | 3y 3m | `logs/hawk_state_conservative.json` | Baseline |
+| optimal | `--portfolio optimal` | +20.47% | 2y 4m | `logs/hawk_state_optimal.json` | Baseline |
+| conservative_vol | `--portfolio conservative_vol` | TBD | TBD | `logs/hawk_state_conservative_vol.json` | A/B: +vol_filter on ETH/XRP 1h |
+| optimal_vol | `--portfolio optimal_vol` | TBD | TBD | `logs/hawk_state_optimal_vol.json` | A/B: +vol_filter on ETH/XRP 1h |
 
-Filters are now wired into hawk_trader.py — paper mode applies RSI/MACD/ADX exactly as the backtest did.
+Filters are wired into hawk_trader.py — paper mode applies RSI/MACD/ADX/VOL exactly as the backtest did.
 
 ### Conservative (all 10x) — confirmed +14.56%/mo
 | Symbol | TF | Lev | ch | SL | RR | ADX | RSI | MACD | Mo% |
@@ -291,13 +293,47 @@ Filters are now wired into hawk_trader.py — paper mode applies RSI/MACD/ADX ex
 
 ---
 
+## Volume Filter Study (2026-04-18)
+
+Focused backtest of two new filters derived from TradingView indicators:
+
+### Filters tested
+| Filter | Concept source | Implementation |
+|--------|---------------|----------------|
+| `vol_filter` | Institutional Volume Flow (BigBeluga) | volume ≥ 20-bar mean + 0.5σ on signal candle |
+| `body_filter` | Enhanced Buy/Sell Profile | (close-low)/(high-low) ≥ 0.5 for longs |
+
+### Results (delta vs baseline, 2yr backtest)
+| Asset | vol only | body only | vol+body | Decision |
+|-------|----------|-----------|----------|----------|
+| ETH 1h (consv) | +1.96%/mo | +1.18%/mo | +3.54%/mo | **vol_filter=True** |
+| XRP 1h (consv) | +2.74%/mo | −1.51%/mo | +1.04%/mo | **vol_filter=True** (body hurts XRP) |
+| BTC 4h | −0.85%/mo | −0.27%/mo | −0.83%/mo | keep off |
+| BNB 4h | −0.10%/mo | −0.28%/mo | −0.39%/mo | keep off |
+| ADA 4h | −0.18%/mo | +0.09%/mo | −0.13%/mo | keep off |
+
+**Why vol helps 1h but not 4h:** 1h bars generate more false breakouts on thin volume; 4h bars naturally aggregate volume so the filter is redundant and too restrictive.
+
+Script: `scripts/hawk_volume_study.py` | Results: `data/volume_study_results.csv`
+
+### A/B test portfolios (PR #1 — pending merge approval)
+Two new parallel paper trading portfolios run alongside existing ones:
+- `conservative_vol`: conservative + vol_filter=True on ETH/XRP 1h
+- `optimal_vol`: optimal + vol_filter=True on ETH/XRP 1h
+
+Compare with: `python scripts/hawk_comparator.py --watch`
+
+---
+
 ## Open Issues / Next Steps
 
-1. **Paper trade both portfolios in parallel** — run conservative + optimal simultaneously, compare performance after 30+ trades.
-2. **Monitor via dashboard** — separate ports for each:
-   - `python scripts/hawk_dashboard.py --state logs/hawk_state_conservative.json --port 5000`
-   - `python scripts/hawk_dashboard.py --state logs/hawk_state_optimal.json --port 5001`
-3. **RSI/MACD filters** — now wired into hawk_trader.py (compute_signals + get_signal). Both portfolio presets apply the exact filters from the backtest. Paper mode = backtest parity.
+1. **Run all 4 portfolios in parallel** — conservative, conservative_vol, optimal, optimal_vol. Compare after 30+ trades via hawk_comparator.py.
+2. **Monitor via dashboard** — `--portfolio` shortcut auto-fills state/trades/port:
+   - `python scripts/hawk_dashboard.py --portfolio conservative`     → port 5000
+   - `python scripts/hawk_dashboard.py --portfolio conservative_vol` → port 5001
+   - `python scripts/hawk_dashboard.py --portfolio optimal`          → port 5002
+   - `python scripts/hawk_dashboard.py --portfolio optimal_vol`      → port 5003
+3. **PR #1 merge gate** — merge `conservative_vol` / `optimal_vol` to master only after 30+ trades confirm vol variants show equal or better EV vs baselines.
 4. **SOL: permanently rejected** — no positive EV across all 2,160 combos. Never add.
 5. **XRP max safe leverage: 10x** — at 20x SL≈liq distance. Optimal portfolio uses 20x (per backtest best) but monitor liquidations closely.
 
@@ -327,3 +363,6 @@ Filters are now wired into hawk_trader.py — paper mode applies RSI/MACD/ADX ex
 | R18 | All indicator code must use Wilder EMA (alpha=1/p, `ewm(alpha=1/p, adjust=False)`) — never `ewm(span=p)`. Standard EMA gives different crossovers and breaks backtest parity. |
 | R19 | TAKER_FEE = 0.0004 (0.04%) in all scripts — matches backtest. hawk_trader.py, hawk_paper_trader.py confirmed fixed. |
 | R20 | hawk_trader.py is the canonical runner. Paper mode = `--paper`. Live = no flag. Testnet = `--testnet`. Do not use hawk_paper_trader.py for new work. |
+| R21 | vol_filter (volume Z-score) applies to 1h strategies only — do NOT add to 4h strategies (backtest shows negative delta for BTC/BNB/ADA 4h). |
+| R22 | Never modify conservative or optimal portfolio presets to add new filters — create *_vol variants instead and A/B test in paper mode first. |
+| R23 | Never merge feature branches to master without explicit user approval — always raise a PR and wait. |
