@@ -81,8 +81,8 @@ STRATEGY_4H = dict(
 #  optimal:      mixed leverage → +20.44%/mo combined → GBP 100k in ~2y 4m   #
 # ─────────────────────────────────────────────────────────────────────────── #
 
-def _s1h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=30, bar_secs=3600,  funding_bars=8,  interval="1h", adx_min=None, rsi_filter=False, macd_filter=False), **kw}
-def _s4h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=12, bar_secs=14400, funding_bars=2,  interval="4h", adx_min=None, rsi_filter=False, macd_filter=False), **kw}
+def _s1h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=30, bar_secs=3600,  funding_bars=8,  interval="1h", adx_min=None, rsi_filter=False, macd_filter=False, vol_filter=False), **kw}
+def _s4h(**kw): return {**dict(ema_fast=20, ema_slow=50, max_hold_bars=12, bar_secs=14400, funding_bars=2,  interval="4h", adx_min=None, rsi_filter=False, macd_filter=False, vol_filter=False), **kw}
 
 PORTFOLIOS: dict[str, dict] = {
     # ── Conservative: all 10x ────────────────────────────────────────────
@@ -115,6 +115,35 @@ PORTFOLIOS: dict[str, dict] = {
             ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0, rsi_filter=True,  macd_filter=True)),        # +2.64%/mo
             ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0, rsi_filter=True)),             # +2.00%/mo
             ("ADA/USDT",  "4h",  5, _s4h(channel_n=8,  sl_atr_mult=2.0, rr=2.5, macd_filter=True)),                          # +1.80%/mo
+        ],
+    },
+    # ── Conservative + Volume filter (parallel A/B test) ──────────────────
+    # Identical to conservative but with vol_filter=True on 1h symbols.
+    # Study showed +1.96–3.54%/mo delta for ETH 1h and +2.74%/mo for XRP 1h.
+    # 4h symbols unchanged (study showed vol_filter hurts 4h).
+    "conservative_vol": {
+        "label":      "Conservative+Vol — 10x cap — A/B vs conservative",
+        "state_file": "logs/hawk_state_conservative_vol.json",
+        "trade_log":  "logs/hawk_trades_conservative_vol.csv",
+        "symbols": [
+            ("ETH/USDT",  "1h", 10, _s1h(channel_n=8,  sl_atr_mult=2.0, rr=2.0, rsi_filter=True, vol_filter=True)),
+            ("XRP/USDT",  "1h", 10, _s1h(channel_n=16, sl_atr_mult=1.0, rr=3.0, vol_filter=True)),
+            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0, rsi_filter=True,  macd_filter=True)),
+            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0, rsi_filter=True)),
+            ("ADA/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=2.0, rr=2.5, rsi_filter=True,  macd_filter=True)),
+        ],
+    },
+    # ── Optimal + Volume filter (parallel A/B test) ───────────────────────
+    "optimal_vol": {
+        "label":      "Optimal+Vol — mixed leverage — A/B vs optimal",
+        "state_file": "logs/hawk_state_optimal_vol.json",
+        "trade_log":  "logs/hawk_trades_optimal_vol.csv",
+        "symbols": [
+            ("ETH/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.0, rr=2.5, rsi_filter=True,  macd_filter=True, vol_filter=True)),
+            ("XRP/USDT",  "1h", 20, _s1h(channel_n=12, sl_atr_mult=1.5, rr=2.5, vol_filter=True)),
+            ("BTC/USDT",  "4h", 10, _s4h(channel_n=8,  sl_atr_mult=1.5, rr=2.0, rsi_filter=True,  macd_filter=True)),
+            ("BNB/USDT",  "4h", 10, _s4h(channel_n=16, sl_atr_mult=1.5, rr=3.0, adx_min=25.0, rsi_filter=True)),
+            ("ADA/USDT",  "4h",  5, _s4h(channel_n=8,  sl_atr_mult=2.0, rr=2.5, macd_filter=True)),
         ],
     },
 }
@@ -347,7 +376,8 @@ def compute_signals(df: pd.DataFrame, channel_n: int = 8,
                     ema_fast: int = 20, ema_slow: int = 50,
                     compute_adx: bool = False,
                     rsi_filter: bool = False,
-                    macd_filter: bool = False) -> pd.DataFrame:
+                    macd_filter: bool = False,
+                    vol_filter: bool = False) -> pd.DataFrame:
     df = df.copy()
     df["ema_f"]    = _ema(df["close"], ema_fast)
     df["ema_s"]    = _ema(df["close"], ema_slow)
@@ -360,11 +390,17 @@ def compute_signals(df: pd.DataFrame, channel_n: int = 8,
         df["rsi"] = _rsi(df["close"], 14)
     if macd_filter:
         df["macd_above"] = _macd_above(df["close"])
+    if vol_filter:
+        # Volume Z-score: enter only when volume >= rolling mean + 0.5*std (Institutional Volume Flow)
+        df["vol_mean"] = df["volume"].rolling(20).mean()
+        df["vol_std"]  = df["volume"].rolling(20).std()
+        df["vol_ok"]   = df["volume"] >= (df["vol_mean"] + 0.5 * df["vol_std"])
     return df
 
 
 def get_signal(df: pd.DataFrame, adx_min: float | None = None,
-               rsi_filter: bool = False, macd_filter: bool = False) -> dict:
+               rsi_filter: bool = False, macd_filter: bool = False,
+               vol_filter: bool = False) -> dict:
     """
     Signal from last confirmed candle (iloc[-2]).
     Filters applied only when their flag is True (matching backtest params per symbol).
@@ -405,10 +441,16 @@ def get_signal(df: pd.DataFrame, adx_min: float | None = None,
         macd_long_ok  = macd_val == 1
         macd_short_ok = macd_val == 0
 
+    # Volume Z-score filter (from Institutional Volume Flow study)
+    # Requires above-average volume on the signal candle to confirm genuine breakout
+    vol_ok = True
+    if vol_filter and "vol_ok" in df.columns:
+        vol_ok = bool(row["vol_ok"]) if not pd.isna(row["vol_ok"]) else True
+
     signal = None
-    if adx_ok and rsi_long_ok and macd_long_ok and bull and c > ch:
+    if adx_ok and rsi_long_ok and macd_long_ok and vol_ok and bull and c > ch:
         signal = "long"
-    elif adx_ok and rsi_short_ok and macd_short_ok and bear and c < cl:
+    elif adx_ok and rsi_short_ok and macd_short_ok and vol_ok and bear and c < cl:
         signal = "short"
 
     return {
@@ -423,6 +465,7 @@ def get_signal(df: pd.DataFrame, adx_min: float | None = None,
         "adx_ok":    adx_ok,
         "rsi":       rsi_val,
         "macd_above": macd_val,
+        "vol_ok":    vol_ok,
         "bull":      bull,
         "regime":    "BULL" if bull else ("BEAR" if bear else "FLAT"),
         "ts":        df.index[-2].isoformat(),
@@ -721,15 +764,18 @@ def _process_tick(
     adx_min     = cfg.get("adx_min")
     rsi_filter  = cfg.get("rsi_filter",  False)
     macd_filter = cfg.get("macd_filter", False)
+    vol_filter  = cfg.get("vol_filter",  False)
     try:
         df_raw = fetch_ohlcv(symbol, cfg["interval"], limit=200)
         df     = compute_signals(df_raw, cfg["channel_n"], cfg["ema_fast"],
                                  cfg["ema_slow"],
                                  compute_adx=(adx_min is not None),
                                  rsi_filter=rsi_filter,
-                                 macd_filter=macd_filter)
+                                 macd_filter=macd_filter,
+                                 vol_filter=vol_filter)
         sig    = get_signal(df, adx_min=adx_min,
-                            rsi_filter=rsi_filter, macd_filter=macd_filter)
+                            rsi_filter=rsi_filter, macd_filter=macd_filter,
+                            vol_filter=vol_filter)
         price  = float(df_raw["close"].iloc[-1])
     except Exception as exc:
         log.error("Data fetch failed for %s [%s]: %s", symbol, tf, exc)
@@ -940,8 +986,10 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Portfolio presets (recommended — run each in a separate terminal):
-  python scripts/hawk_trader.py --paper --portfolio conservative   # 10x all, +14.54%/mo
-  python scripts/hawk_trader.py --paper --portfolio optimal        # mixed leverage, +20.44%/mo
+  python scripts/hawk_trader.py --paper --portfolio conservative        # 10x all, +14.56%/mo
+  python scripts/hawk_trader.py --paper --portfolio optimal             # mixed leverage, +20.47%/mo
+  python scripts/hawk_trader.py --paper --portfolio conservative_vol    # A/B: conservative + vol filter
+  python scripts/hawk_trader.py --paper --portfolio optimal_vol         # A/B: optimal + vol filter
 
 Manual mode:
   python scripts/hawk_trader.py --paper --symbols ETH/USDT XRP/USDT --4h-symbols BTC/USDT
@@ -1023,6 +1071,7 @@ Live mode env vars (not needed for --paper):
         if cfg.get("adx_min"):    filters.append(f"ADX>={cfg['adx_min']:.0f}")
         if cfg.get("rsi_filter"): filters.append("RSI")
         if cfg.get("macd_filter"):filters.append("MACD")
+        if cfg.get("vol_filter"): filters.append("VOL")
         log.info("    %-12s [%s]  %2dx  ch=%-2d  SL=%.1fx  RR=%.1f  filters=%s",
                  sym, tf, lev, cfg["channel_n"], cfg["sl_atr_mult"], cfg["rr"],
                  "+".join(filters) if filters else "none")
