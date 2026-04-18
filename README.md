@@ -103,8 +103,15 @@ python scripts/hawk_trader.py --paper --portfolio optimal
 python scripts/hawk_trader.py --paper --portfolio conservative --run-once
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
-python scripts/hawk_dashboard.py --state logs/hawk_state_conservative.json --port 5000
-python scripts/hawk_dashboard.py --state logs/hawk_state_optimal.json --port 5001
+python scripts/hawk_dashboard.py --portfolio conservative   # http://localhost:5000
+python scripts/hawk_dashboard.py --portfolio optimal        # http://localhost:5002
+
+# ── Comparator dashboard (all portfolios side-by-side, requires flask) ────────
+python scripts/hawk_comparator_dashboard.py                 # http://localhost:5010
+
+# ── Portfolio backtest (exact preset params, ~20s) ────────────────────────────
+python scripts/hawk_portfolio_backtest.py                   # all 4 portfolios + comparison
+python scripts/hawk_portfolio_backtest.py --portfolio conservative  # single
 
 # ── Live trading ──────────────────────────────────────────────────────────────
 python scripts/hawk_trader.py --testnet --portfolio conservative   # testnet first

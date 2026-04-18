@@ -65,6 +65,10 @@ RRS         = [2.0, 2.5, 3.0]
 ADX_MINS    = [0.0, 15.0, 20.0, 25.0]   # 0.0 = disabled
 RSI_FLAGS   = [False, True]
 MACD_FLAGS  = [False, True]
+VOL_FLAGS   = [False, True]
+
+VOL_ZSCORE_K = 0.5   # candle volume must exceed 20-bar mean + k*std
+VOL_LOOKBACK = 20
 
 ASSETS_1H = ["ETHUSDT", "BTCUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "ADAUSDT"]
 ASSETS_4H = ["ETHUSDT", "BTCUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "ADAUSDT"]
@@ -162,6 +166,7 @@ def compute_dataset_indicators(df: pd.DataFrame) -> dict:
     h = df["high"].values.astype(np.float64)
     l = df["low"].values.astype(np.float64)
     c = df["close"].values.astype(np.float64)
+    v = df["volume"].values.astype(np.float64)
     n = len(c)
 
     # ATR(14) — Wilder
@@ -216,12 +221,21 @@ def compute_dataset_indicators(df: pd.DataFrame) -> dict:
         chan_hi[n_bars] = hi
         chan_lo[n_bars] = lo
 
+    # Volume Z-score (rolling VOL_LOOKBACK bars, shift-1 — no look-ahead)
+    vol_mean = np.full(n, np.nan)
+    vol_std  = np.full(n, np.nan)
+    for i in range(VOL_LOOKBACK, n):
+        window = v[i - VOL_LOOKBACK:i]
+        vol_mean[i] = window.mean()
+        vol_std[i]  = window.std()
+
     return {
-        "c": c, "h": h, "l": l,
+        "c": c, "h": h, "l": l, "v": v,
         "ema20": ema20, "ema50": ema50,
         "atr14": atr14, "adx": adx, "rsi": rsi,
         "macd_above": macd_above,
         "chan_hi": chan_hi, "chan_lo": chan_lo,
+        "vol_mean": vol_mean, "vol_std": vol_std,
         "n": n,
     }
 
@@ -233,12 +247,14 @@ def compute_dataset_indicators(df: pd.DataFrame) -> dict:
 def run_combo(
     c, h, l, ema20, ema50, atr14, adx, rsi, macd_above,
     chan_hi, chan_lo,
+    v, vol_mean, vol_std,
     leverage: int,
     sl_m: float,
     rr: float,
     adx_min: float,
     rsi_on: bool,
     macd_on: bool,
+    vol_on: bool,
     max_hold: int,
     fund_bars: int,
 ) -> tuple:
@@ -364,11 +380,20 @@ def run_combo(
             macd_long_ok  = mv == 1
             macd_short_ok = mv == 0
 
+        # Volume Z-score filter
+        vol_ok = True
+        if vol_on:
+            vm = vol_mean[i]; vs = vol_std[i]
+            if math.isnan(vm):
+                vol_ok = False
+            else:
+                vol_ok = v[i] >= vm + VOL_ZSCORE_K * vs
+
         sd = sl_m * batr
         if sd <= 0:
             continue
 
-        if bull and adx_ok and rsi_long_ok and macd_long_ok and bc > bch:
+        if bull and adx_ok and rsi_long_ok and macd_long_ok and vol_ok and bc > bch:
             ep   = bc * 1.0005
             qty  = (equity * RISK_PCT / 100.0) / sd
             not_ = qty * ep
@@ -383,7 +408,7 @@ def run_combo(
                 positions.append([1, ep, qty, not_, mrg,
                                    ep - sd, ep + rr * sd, i])
 
-        elif bear and adx_ok and rsi_short_ok and macd_short_ok and bc < bcl:
+        elif bear and adx_ok and rsi_short_ok and macd_short_ok and vol_ok and bc < bcl:
             ep   = bc * 0.9995
             qty  = (equity * RISK_PCT / 100.0) / sd
             not_ = qty * ep
@@ -424,7 +449,8 @@ def _worker(args):
     (asset, tf, days,
      c, h, l, ema20, ema50, atr14, adx_arr, rsi_arr, macd_arr,
      chan_hi_dict, chan_lo_dict,
-     lev, chan, sl_m, rr, adx_min, rsi_on, macd_on) = args
+     v_arr, vol_mean_arr, vol_std_arr,
+     lev, chan, sl_m, rr, adx_min, rsi_on, macd_on, vol_on) = args
 
     mh = MAX_HOLD[tf]
     fb = FUND_BARS[tf]
@@ -433,7 +459,8 @@ def _worker(args):
         c, h, l, ema20, ema50, atr14,
         adx_arr, rsi_arr, macd_arr,
         chan_hi_dict[chan], chan_lo_dict[chan],
-        lev, sl_m, rr, adx_min, rsi_on, macd_on, mh, fb,
+        v_arr, vol_mean_arr, vol_std_arr,
+        lev, sl_m, rr, adx_min, rsi_on, macd_on, vol_on, mh, fb,
     )
 
     # Monthly% from actual equity curve
@@ -454,6 +481,7 @@ def _worker(args):
         "adx_min":  int(adx_min) if adx_min > 0 else "off",
         "rsi":      "on" if rsi_on  else "off",
         "macd":     "on" if macd_on else "off",
+        "vol":      "on" if vol_on  else "off",
         "return_pct": round(ret, 2),
         "monthly_pct": round(mo_pct, 3),
         "wr":        round(wr, 2),
@@ -470,16 +498,16 @@ def _worker(args):
 # ─────────────────────────────────────────────────────────────────────────── #
 
 HDR = (f"  {'Asset':<10} {'TF':<3} {'Lev':>4} {'Ch':>3} {'SL':>4} {'RR':>4} "
-       f"{'ADX':>4} {'RSI':>4} {'MACD':>5} "
+       f"{'ADX':>4} {'RSI':>4} {'MACD':>5} {'VOL':>4} "
        f"{'Return':>8} {'Mo%':>7} {'WR%':>6} {'RR_act':>7} "
        f"{'T':>5} {'Liqs':>5} {'EV':>7}")
-SEP = "  " + "-" * 110
+SEP = "  " + "-" * 116
 
 
 def _row(r: dict) -> str:
     return (f"  {r['asset']:<10} {r['tf']:<3} {r['leverage']:>4}x {r['channel']:>3} "
             f"{r['sl_atr']:>4.1f} {r['rr']:>4.1f} "
-            f"{str(r['adx_min']):>4} {r['rsi']:>4} {r['macd']:>5} "
+            f"{str(r['adx_min']):>4} {r['rsi']:>4} {r['macd']:>5} {r.get('vol', 'off'):>4} "
             f"{r['return_pct']:>+7.1f}% {r['monthly_pct']:>+6.2f}% "
             f"{r['wr']:>5.1f}% {r['actual_rr']:>7.3f} "
             f"{r['trades']:>5} {r['liqs']:>5} {r['ev']:>+7.4f}")
@@ -528,7 +556,7 @@ def main() -> None:
 
     n_datasets  = len(datasets)
     n_per_ds    = (len(LEVERAGES) * len(CHANNELS) * len(SL_ATRS) *
-                   len(RRS) * len(ADX_MINS) * len(RSI_FLAGS) * len(MACD_FLAGS))
+                   len(RRS) * len(ADX_MINS) * len(RSI_FLAGS) * len(MACD_FLAGS) * len(VOL_FLAGS))
     total_combos = n_datasets * n_per_ds
     print(f"\n  Datasets: {n_datasets}  |  Combos/dataset: {n_per_ds}  "
           f"|  Total: {total_combos:,}\n")
@@ -541,10 +569,11 @@ def main() -> None:
                 ind["c"], ind["h"], ind["l"],
                 ind["ema20"], ind["ema50"], ind["atr14"],
                 ind["adx"], ind["rsi"], ind["macd_above"],
-                ind["chan_hi"], ind["chan_lo"])
+                ind["chan_hi"], ind["chan_lo"],
+                ind["v"], ind["vol_mean"], ind["vol_std"])
 
         for combo in itertools.product(
-            LEVERAGES, CHANNELS, SL_ATRS, RRS, ADX_MINS, RSI_FLAGS, MACD_FLAGS
+            LEVERAGES, CHANNELS, SL_ATRS, RRS, ADX_MINS, RSI_FLAGS, MACD_FLAGS, VOL_FLAGS
         ):
             tasks.append(base + combo)
 
@@ -585,9 +614,9 @@ def _print_summary(df: pd.DataFrame) -> None:
     # Filter positive EV, min 20 trades
     valid = df[(df["ev"] > 0) & (df["trades"] >= 20) & (df["liqs"] <= 10)].copy()
 
-    print("\n" + "=" * 115)
+    print("\n" + "=" * 121)
     print("  TOP 30 STRATEGIES  (sorted by monthly%, min 20 trades, EV > 0, liqs <= 10)")
-    print("=" * 115)
+    print("=" * 121)
     print(HDR)
     print(SEP)
     for _, r in df[(df["trades"] >= 20) & (df["liqs"] <= 10)].head(30).iterrows():
@@ -598,9 +627,9 @@ def _print_summary(df: pd.DataFrame) -> None:
     print("\n  *** = 10%+/month   ** = 5%+/month\n")
 
     # ── Best per asset ─────────────────────────────────────────────────── #
-    print("=" * 115)
+    print("=" * 121)
     print("  BEST STRATEGY PER ASSET  (highest monthly%, min 20 trades, EV > 0)")
-    print("=" * 115)
+    print("=" * 121)
     print(HDR)
     print(SEP)
     for asset in ["ETHUSDT", "BTCUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "ADAUSDT"]:
@@ -612,9 +641,9 @@ def _print_summary(df: pd.DataFrame) -> None:
         print(_row(best))
 
     # ── Best per TF ────────────────────────────────────────────────────── #
-    print("\n" + "=" * 115)
+    print("\n" + "=" * 121)
     print("  BEST STRATEGY PER TIMEFRAME")
-    print("=" * 115)
+    print("=" * 121)
     print(HDR)
     print(SEP)
     for tf in ["1h", "4h"]:
@@ -626,9 +655,9 @@ def _print_summary(df: pd.DataFrame) -> None:
         print(_row(best))
 
     # ── Best per leverage ──────────────────────────────────────────────── #
-    print("\n" + "=" * 115)
+    print("\n" + "=" * 121)
     print("  BEST STRATEGY PER LEVERAGE")
-    print("=" * 115)
+    print("=" * 121)
     print(HDR)
     print(SEP)
     for lev in LEVERAGES:
@@ -641,9 +670,9 @@ def _print_summary(df: pd.DataFrame) -> None:
 
     # ── 10%+/month strategies ──────────────────────────────────────────── #
     ten_pct = valid[valid["monthly_pct"] >= 10.0]
-    print(f"\n{'=' * 115}")
+    print(f"\n{'=' * 121}")
     print(f"  STRATEGIES ACHIEVING 10%+/MONTH  ({len(ten_pct)} found)")
-    print("=" * 115)
+    print("=" * 121)
     if len(ten_pct) > 0:
         print(HDR)
         print(SEP)
@@ -657,10 +686,10 @@ def _print_summary(df: pd.DataFrame) -> None:
         print(_row(best))
 
     # ── Portfolio combos ───────────────────────────────────────────────── #
-    print(f"\n{'=' * 115}")
+    print(f"\n{'=' * 121}")
     print("  TOP MULTI-ASSET PORTFOLIO COMBINATIONS")
     print("  (Best strategy per asset, combined monthly% if run in parallel)")
-    print("=" * 115)
+    print("=" * 121)
 
     import math
 
@@ -713,7 +742,7 @@ def _print_summary(df: pd.DataFrame) -> None:
     print(f"\n  Combined monthly%: {portfolio_10x:+.2f}%")
     print(f"  Roadmap: {roadmap(portfolio_10x)}")
 
-    print("\n" + "=" * 115 + "\n")
+    print("\n" + "=" * 121 + "\n")
 
 
 if __name__ == "__main__":

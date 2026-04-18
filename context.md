@@ -6,7 +6,7 @@
 ---
 
 ## Last Updated
-2026-04-17 — Re-ran full 25,920-combo backtest (single-process, 20.5 min). Confirmed all previous results reproduce exactly. Wired RSI/MACD filters into hawk_trader.py (compute_signals + get_signal). Updated both portfolio presets with exact backtest filters — paper mode now matches the backtest engine precisely.
+2026-04-18 — Added portfolio backtest + comparator dashboard (PR #2, branch feat/portfolio-backtest-comparator). New scripts: `hawk_portfolio_backtest.py` (runs all 4 presets through run_combo, ~20s, saves data/portfolio_backtest_results.csv), `hawk_comparator_dashboard.py` (Flask web UI port 5010, overlaid equity curves, insights, trade log tabs). `hawk_comprehensive_backtest.py` updated: `vol_on` param added to `run_combo`, `VOL_FLAGS=[False,True]` in grid. Vol filter study conclusion: conservative_vol +4.17%/mo vs conservative +14.54%/mo, optimal_vol +7.94%/mo vs optimal +20.44%/mo — vol filter hurts both baselines; do not merge PR #1.
 
 ---
 
